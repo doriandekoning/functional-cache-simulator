@@ -1,4 +1,4 @@
-TARGET = simulator
+TARGET = bin/simulator
 LIBS = -lm
 CC = gcc
 CFLAGS = -g -Wall
@@ -13,6 +13,7 @@ HEADERS = $(wildcard *.h)
 
 %.o: %.c $(HEADERS)
 	$(CC) $(CFLAGS) -c $< -o $@
+
 
 .PRECIOUS: $(TARGET) $(OBJECTS)
 
