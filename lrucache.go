@@ -24,7 +24,8 @@ func NewLRUCache(size int) *LRUCache {
 
 func (c *LRUCache) Get(key uint64) bool {
 	var hit bool
-	if line, hit := c.values[key]; hit {
+	var line *list.Element
+	if line, hit = c.values[key]; hit {
 		c.items.MoveToFront(line)
 		c.Hits++
 	} else {
@@ -36,6 +37,7 @@ func (c *LRUCache) Get(key uint64) bool {
 
 func (c *LRUCache) Set(key uint64) {
 	if line, contains := c.values[key]; contains {
+		//TODO writeback
 		c.items.MoveToFront(line)
 		c.Writes++
 	} else {
@@ -43,7 +45,7 @@ func (c *LRUCache) Set(key uint64) {
 		//Check size
 		if len(c.values) > c.Size {
 			lru := c.items.Back()
-			delete(c.values, key)
+			delete(c.values, lru.Value.(uint64))
 			c.items.Remove(lru)
 			c.Evictions++
 		}
