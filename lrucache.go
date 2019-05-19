@@ -47,6 +47,7 @@ func (c *LRUCache) Set(addr uint64) {
 	if line, contains := c.values[addr]; contains {
 		c.items.MoveToFront(line)
 		line.Value.(*CacheEntry).dirty = true
+		c.Memory.Write(addr) // Write through cache
 		c.Writes++
 	} else {
 		c.addEntry(addr, true)
