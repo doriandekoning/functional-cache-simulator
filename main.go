@@ -3,13 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
-	"log"
-
-	pb "github.com/doriandekoning/functional-cache-simulator/messages"
-
-
-	"github.com/gogo/protobuf/proto"
+	"io"
 )
 
 const fileHeader = "gem5"
@@ -19,6 +13,7 @@ var debuggingEnabled = false
 
 func main() {
 	inputFile := flag.String("input", "", "Input trace file to analyse")
+	outputFile := flag.String("output", "", "Output")
 	flag.BoolVar(&debuggingEnabled, "debug", false, "If set to true additional debugging info will be logged")
 	flag.Parse()
 
@@ -26,37 +21,34 @@ func main() {
 	    panic("No input file provided")
 	}
 
-	in, err := ioutil.ReadFile(*inputFile)
+	if outputFile == nil {
+	    panic("No output file provided")
+	}
+
+	in, err := NewReader(*inputFile)
 	if err != nil {
-		log.Fatalln("Error reading file:", err)
-	}
-	headerLength := len([]byte(fileHeader))
-	header := string(in[:4])
-	if header != fileHeader {
-		panic("Input not recognized")
-	}
-	curOffset := headerLength
-	traceHeader := &pb.PacketHeader{}
-	nextMessagesize, n := proto.DecodeVarint(in[curOffset:])
-	curOffset += n
-	if err := proto.Unmarshal(in[curOffset:(curOffset+int(nextMessagesize))], traceHeader); err != nil {
 		panic(err)
 	}
-	curOffset += int(nextMessagesize)
+
+	header, err := in.ReadHeader()
+	if err != nil {
+	    panic(err)
+	}
+	fmt.Printf("%+v\n", header)
+
+	memory := NewMemory(*outputFile)
 	cache := NewLRUCache(L1CacheSize / cacheLineSize)
+	cache.Memory = memory
 	for true {
-		nextMessagesize, n := proto.DecodeVarint(in[curOffset:])
-		curOffset += n
-		if curOffset+int(nextMessagesize) >= len(in) {
-			break
+		packet, err := in.ReadPacket()
+		if err == io.EOF{
+		    fmt.Println("EOF reached")
+		    break
+		} else if err != nil {
+		    panic(err)
 		}
-		trace := &pb.Packet{}
-		if err := proto.Unmarshal(in[curOffset:(curOffset+int(nextMessagesize))], trace); err != nil {
-			panic(err)
-		}
-		curOffset += int(nextMessagesize)
-		cacheLine := trace.GetAddr() - (trace.GetAddr() % cacheLineSize)
-		if trace.GetCmd() == 1 {
+		cacheLine := packet.GetAddr() - (packet.GetAddr() % cacheLineSize)
+		if packet.GetCmd() == 1 {
 			//TODO handle multi line reads
 			cache.Get(cacheLine)
 		} else {
@@ -64,10 +56,12 @@ func main() {
 		}
 	}
 	fmt.Println("-----------------------\nTrace statistics:")
-	fmt.Println("Writes:", cache.Writes)
-	fmt.Println("Misses:", cache.Misses)
-	fmt.Println("Evictions:", cache.Evictions)
-	fmt.Println("Hits:", cache.Hits)
+	fmt.Println("L1 Writes:", cache.Writes)
+	fmt.Println("L1 Misses:", cache.Misses)
+	fmt.Println("L1 Evictions:", cache.Evictions)
+	fmt.Println("L1 Hits:", cache.Hits)
+	fmt.Println("Memory Writes:", memory.Writes)
+	fmt.Println("Memory Reads:", memory.Reads)
 	fmt.Println("-----------------------")
 }
 
