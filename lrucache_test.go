@@ -10,10 +10,13 @@ import (
 type LRUCacheSuite struct {
     suite.Suite
     c *LRUCache
+    m *Memory
 }
 
 func (suite *LRUCacheSuite) SetupTest() {
+    suite.m = NewMemory("")
     suite.c = NewLRUCache(5)
+    suite.c.Memory = suite.m
 }
 
 func (s *LRUCacheSuite) TestCacheEmptyGetMiss() {

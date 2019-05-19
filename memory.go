@@ -2,6 +2,9 @@ package main
 
 import (
 	"os"
+	"io"
+	"io/ioutil"
+	"fmt"
 	"strconv"
 	"encoding/csv"
 )
@@ -13,9 +16,16 @@ type Memory struct {
 }
 
 func NewMemory(outputLoc string) *Memory {
-	file, err := os.Create(outputLoc)
-	if err != nil {
-	    panic(err)
+	var file io.Writer
+	if outputLoc == "" {
+	    fmt.Println("WARNING: Using discard writer for output")
+	    file = ioutil.Discard
+	} else {
+	    var err error
+	    file, err = os.Create(outputLoc)
+	    if err != nil {
+	        panic(err)
+	    }
 	}
 	mem := Memory{}
 	mem.outWriter = csv.NewWriter(file)
