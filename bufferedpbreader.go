@@ -1,15 +1,14 @@
-package main 
-
+package main
 
 import (
 	"bufio"
 	"fmt"
-	"os"
 	"io"
+	"os"
 
 	pb "github.com/doriandekoning/functional-cache-simulator/messages"
 
-        "github.com/gogo/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 )
 
 type BufferedPBReader struct {
@@ -32,41 +31,38 @@ func NewReader(path string) (*BufferedPBReader, error) {
 
 func (b *BufferedPBReader) checkHeader() error {
 	headerLength := len([]byte(fileHeader))
-        bytes := make([]byte, headerLength)
+	bytes := make([]byte, headerLength)
 	n, err := io.ReadFull(&b.reader, bytes)
 	if err != nil || n != headerLength {
 		return fmt.Errorf("Error reading header")
 	}
 	header := string(bytes)
-        if header != fileHeader {
+	if header != fileHeader {
 		return fmt.Errorf("Header not correct")
 	}
 	return nil
 }
 
-
-
 func (b *BufferedPBReader) ReadVarInt() (uint64, error) {
 	bytes, err := b.reader.Peek(8)
 	if err != nil {
-	    return 0, err
+		return 0, err
 	}
 	ret, n := proto.DecodeVarint(bytes)
 	if n == 0 {
-	    return 0, fmt.Errorf("Error decoding varint")
+		return 0, fmt.Errorf("Error decoding varint")
 	}
 	discarded, err := b.reader.Discard(n)
 	if n != discarded {
-	    return 0, fmt.Errorf("Discarded not equal to read")
+		return 0, fmt.Errorf("Discarded not equal to read")
 	}
 	return ret, nil
 }
 
-
 func (b *BufferedPBReader) ReadBytes() (*[]byte, error) {
 	size, err := b.ReadVarInt()
 	if err != nil {
-	    return nil, err
+		return nil, err
 	}
 	bytes := make([]byte, size)
 	n, err := io.ReadFull(&b.reader, bytes)
@@ -80,11 +76,10 @@ func (b *BufferedPBReader) ReadBytes() (*[]byte, error) {
 	return &bytes, nil
 }
 
-
 func (b *BufferedPBReader) ReadPacket() (*pb.Packet, error) {
 	bytes, err := b.ReadBytes()
 	if err != nil {
-	    return nil, err
+		return nil, err
 	}
 	packet := &pb.Packet{}
 	if err := proto.Unmarshal(*bytes, packet); err != nil {

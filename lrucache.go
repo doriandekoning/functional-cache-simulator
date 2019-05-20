@@ -5,26 +5,26 @@ import (
 )
 
 type CacheEntry struct {
-    address uint64
-    dirty bool //TODO maybe this can be encoded in the msb of the address
+	address uint64
+	dirty   bool //TODO maybe this can be encoded in the msb of the address
 }
 
 type LRUCache struct {
-	items *list.List
-	values map[uint64]*list.Element
-	Size int
-	Hits uint64
-	Misses uint64
-	Writes uint64
+	items     *list.List
+	values    map[uint64]*list.Element
+	Size      int
+	Hits      uint64
+	Misses    uint64
+	Writes    uint64
 	Evictions uint64
-	Memory *Memory
+	Memory    *Memory
 }
 
 func NewLRUCache(size int) *LRUCache {
 	return &LRUCache{
-		items: list.New(),
+		items:  list.New(),
 		values: make(map[uint64]*list.Element),
-		Size: size,
+		Size:   size,
 	}
 }
 
@@ -41,7 +41,6 @@ func (c *LRUCache) Get(addr uint64) bool {
 	}
 	return hit
 }
-
 
 func (c *LRUCache) Set(addr uint64) {
 	if line, contains := c.values[addr]; contains {
@@ -60,7 +59,7 @@ func (c *LRUCache) addEntry(addr uint64, dirty bool) {
 	//Check size
 	if len(c.values) > c.Size {
 		if c.values[addr].Value.(*CacheEntry).dirty {
-		    c.Memory.Write(addr)
+			c.Memory.Write(addr)
 		}
 		c.evict()
 	}
