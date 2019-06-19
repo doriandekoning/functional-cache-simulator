@@ -12,7 +12,7 @@ import (
 
 const fileHeader = "gem5"
 const cacheLineSize = 64 // Cache line size in bytes
-const L1CacheSize = 64 * 1024
+const L1CacheSize = 64
 
 var debuggingEnabled = false
 var outWriter *csv.Writer
@@ -61,20 +61,22 @@ func main() {
 			panic(err)
 		}
 		cacheLine := packet.GetAddr() - (packet.GetAddr() % cacheLineSize)
-		var op = "nop"
 		if packet.GetCmd() == 1 {
 			//TODO handle multi line reads
+			var op = "nop"
 			hit := cache.Get(cacheLine)
 			if !hit {
 				op = "r"
 			}
+			outWriter.Write([]string{strconv.FormatUint(packet.GetAddr(), 10), "r", op})
 		} else {
 			cache.Set(cacheLine)
 			//Assume write through cache, where each write is written back to memory (in the order the cache received them)
-			op = "w"
+			outWriter.Write([]string{strconv.FormatUint(packet.GetAddr(), 10), "w", "w"})
 		}
-		outWriter.Write([]string{strconv.FormatUint(packet.GetAddr(), 10), "r", op})
 	}
+	outWriter.Flush()
+
 	fmt.Println("-----------------------\nTrace statistics:")
 	fmt.Println("L1 Writes:", cache.Writes)
 	fmt.Println("L1 Misses:", cache.Misses)
