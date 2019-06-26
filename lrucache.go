@@ -22,7 +22,7 @@ type LRUCache struct {
 }
 
 func NewLRUCache(size int) *LRUCache {
-	fmt.Println("LRUSize", size)
+	fmt.Println("Size of the LRU Cache:", size, "(entries)")
 	return &LRUCache{
 		items:  list.New(),
 		values: make(map[uint64]*list.Element),

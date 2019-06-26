@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/doriandekoning/functional-cache-simulator/messages"
+	"github.com/doriandekoning/functional-cache-simulator/reader"
 )
 
 const (
@@ -25,7 +26,7 @@ type State struct {
 	addressMap map[uint64]*AddressMapEntry
 }
 
-func simulateBatch(inputs map[int]*BufferedPBReader, outFile *csv.Writer) *Stats {
+func simulateBatch(inputs map[int]reader.PBReader, outFile *csv.Writer) *Stats {
 	stats := &Stats{
 		MemoryReads:    0,
 		MemoryWrites:   0,
@@ -42,7 +43,6 @@ func simulateBatch(inputs map[int]*BufferedPBReader, outFile *csv.Writer) *Stats
 		}
 	}
 
-	someCounter := 0
 	writeBack := 0
 	//TODO:flushing
 
@@ -53,6 +53,9 @@ func simulateBatch(inputs map[int]*BufferedPBReader, outFile *csv.Writer) *Stats
 			break
 		} else if err != nil {
 			panic(err)
+		}
+		if packet == nil {
+			break
 		}
 		cacheLine := packet.GetAddr() - (packet.GetAddr() % cacheLineSize)
 		item := states[id].addressMap[cacheLine]
@@ -91,7 +94,6 @@ func simulateBatch(inputs map[int]*BufferedPBReader, outFile *csv.Writer) *Stats
 			} else {
 				panic("Dont know what to do")
 			}
-			someCounter++
 
 		} else {
 
@@ -123,12 +125,7 @@ func simulateBatch(inputs map[int]*BufferedPBReader, outFile *csv.Writer) *Stats
 		if states[id].addressMap[cacheLine] != nil {
 			states[id].lruList.MoveToFront(states[id].addressMap[cacheLine].listItem)
 		}
-		//  else {
-		// 	delete(states[id].addressMap, states[id].lruList.Remove(states[id].lruList.Back()).(uint64))
-		// 	states[id].addressMap[cacheLine] = &AddressMapEntry{state: STATE_MODIFIED, listItem: states[id].lruList.PushFront(cacheLine)}
 
-		// }
-		//		outWriter.Write([]string{strconv.FormatUint(packet.GetAddr(), 10), "h"})
 		if len(states[id].addressMap) > cacheSize {
 			evictedLine := states[id].lruList.Remove(states[id].lruList.Back()).(uint64)
 			if states[id].addressMap[evictedLine].state == STATE_MODIFIED {
@@ -139,17 +136,12 @@ func simulateBatch(inputs map[int]*BufferedPBReader, outFile *csv.Writer) *Stats
 			stats.CacheEvictions++
 		}
 	}
-	fmt.Println("someCounter:", someCounter)
-	fmt.Println("writeback", writeBack)
-	fmt.Println(len(states))
-
-	fmt.Println(len(states[0].addressMap))
 
 	return stats
 }
 
 //getNextPacket gets the next packet with the lowest timestamp and returns it along with it's cpu id
-func getNextPacket(inputs map[int]*BufferedPBReader) (*messages.Packet, int, error) {
+func getNextPacket(inputs map[int]reader.PBReader) (*messages.Packet, int, error) {
 	cpuMinTick := inputs[0].NextTick() //TODO:maxint
 	cpuMinId := 0
 	for i, input := range inputs {

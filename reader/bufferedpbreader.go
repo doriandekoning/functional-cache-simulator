@@ -1,4 +1,4 @@
-package main
+package reader
 
 import (
 	"bufio"
@@ -11,12 +11,15 @@ import (
 	"github.com/gogo/protobuf/proto"
 )
 
+const fileHeader = "gem5"
+
 type BufferedPBReader struct {
 	reader     bufio.Reader
 	nextPacket *pb.Packet
+	header     *pb.PacketHeader
 }
 
-func NewReader(path string) (*BufferedPBReader, error) {
+func NewBufferedPBReader(path string) (*BufferedPBReader, error) {
 	in, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -27,6 +30,20 @@ func NewReader(path string) (*BufferedPBReader, error) {
 	if err != nil {
 		return nil, err
 	}
+	reader.header, err = reader.readHeader()
+	if err != nil {
+		return nil, err
+	}
+	bytes, err := reader.ReadBytes()
+	if err != nil {
+		return nil, err
+	}
+	packet := &pb.Packet{}
+	if err := proto.Unmarshal(*bytes, packet); err != nil {
+		return nil, err
+	}
+	reader.nextPacket = packet
+
 	return reader, nil
 }
 
@@ -80,19 +97,25 @@ func (b *BufferedPBReader) ReadBytes() (*[]byte, error) {
 func (b *BufferedPBReader) ReadPacket() (*pb.Packet, error) {
 	bytes, err := b.ReadBytes()
 	if err != nil {
-		//TODO fix last packet cannot be read currently
+		//TODO fix last packet cannot be read currently refactor reader to have `HasNext() bool` function
 		return nil, err
 	}
 	packet := &pb.Packet{}
 	if err := proto.Unmarshal(*bytes, packet); err != nil {
+
 		return nil, err
 	}
 	retPacket := b.nextPacket
 	b.nextPacket = packet
+
 	return retPacket, nil
 }
 
-func (b *BufferedPBReader) ReadHeader() (*pb.PacketHeader, error) {
+func (b *BufferedPBReader) GetHeader() *pb.PacketHeader {
+	return b.header
+}
+
+func (b *BufferedPBReader) readHeader() (*pb.PacketHeader, error) {
 	bytes, err := b.ReadBytes()
 	if err != nil {
 		return nil, err

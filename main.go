@@ -9,13 +9,16 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/doriandekoning/functional-cache-simulator/reader"
 )
 
-const fileHeader = "gem5"
 const cacheLineSize = 64 // Cache line size in bytes
 const cacheSize = 64     // Cache size in lines
 
 var debuggingEnabled = false
+var bufferCompleteFile = false
 var batch = false
 var batchSize = 1
 var outWriter *csv.Writer
@@ -35,25 +38,34 @@ func main() {
 	outputFileLoc := flag.String("output", "", "Output")
 	flag.BoolVar(&debuggingEnabled, "debug", false, "If set to true additional debugging info will be logged")
 	flag.BoolVar(&batch, "batch", false, "If set to true batch processing will be used (less accurate but probably faster)")
+	flag.BoolVar(&bufferCompleteFile, "buffer-complete-file", false, "If set to true the complete file is read into memory before simulating")
 	flag.IntVar(&batchSize, "batchsize", 1, "Sets the batchsize, a larger value is faster but less accurate, a batch size of 1 results in the exact result")
 	flag.Parse()
 
 	if inputFiles == nil {
 		panic("No input file provided")
 	}
-
+	if bufferCompleteFile {
+		fmt.Println("Reading the complete trace into memory before starting the simulation")
+	}
 	inputFilesSplit := strings.Split(*inputFiles, ",")
-	inputReaders := make(map[int]*BufferedPBReader)
+	inputReaders := make(map[int]reader.PBReader)
 	for i, inputF := range inputFilesSplit {
-		in, err := NewReader(inputF)
+		var in reader.PBReader
+		var err error
+		if !bufferCompleteFile {
+			in, err = reader.NewBufferedPBReader(inputF)
+			if err != nil {
+				panic(err)
+			}
+
+		} else {
+			in, err = reader.NewMemoryPBReader(inputF)
+		}
 		if err != nil {
 			panic(err)
 		}
 
-		_, err = in.ReadHeader()
-		if err != nil {
-			panic(err)
-		}
 		inputReaders[i] = in
 	}
 
@@ -71,11 +83,15 @@ func main() {
 
 	outWriter = csv.NewWriter(outFile)
 	var stats *Stats
+	t0 := time.Now()
 	if !batch {
+		fmt.Println("Simulating the cache sequentially")
 		stats = simulateSequential(inputReaders[0], outWriter)
 	} else {
+		fmt.Println("Simulating the cache in a batch with size:", batchSize)
 		stats = simulateBatch(inputReaders, outWriter)
 	}
+	fmt.Println("Time spend on simulation: ", time.Since(t0))
 
 	fmt.Println("-----------------------\nTrace statistics:")
 	fmt.Println("Cache Writes:", stats.CacheWrites)
@@ -87,12 +103,11 @@ func main() {
 	fmt.Println("-----------------------")
 }
 
-func simulateSequential(input *BufferedPBReader, outFile *csv.Writer) *Stats {
+func simulateSequential(input reader.PBReader, outFile *csv.Writer) *Stats {
 
 	memory := NewMemory()
 	cache := NewLRUCache(cacheSize)
 	cache.Memory = memory
-	someCounter := 0
 	for true {
 		packet, err := input.ReadPacket()
 		if err == io.EOF {
@@ -100,6 +115,8 @@ func simulateSequential(input *BufferedPBReader, outFile *csv.Writer) *Stats {
 			break
 		} else if err != nil {
 			panic(err)
+		} else if packet == nil {
+			break
 		}
 		cacheLine := packet.GetAddr() - (packet.GetAddr() % cacheLineSize)
 		if packet.GetCmd() == 1 {
@@ -107,8 +124,6 @@ func simulateSequential(input *BufferedPBReader, outFile *csv.Writer) *Stats {
 			var hm = "h"
 			hit := cache.Get(cacheLine)
 			if !hit {
-				someCounter++
-
 				hm = "m"
 				cache.Set(cacheLine)
 
@@ -121,7 +136,6 @@ func simulateSequential(input *BufferedPBReader, outFile *csv.Writer) *Stats {
 		}
 
 	}
-	fmt.Println("someCounter:", someCounter)
 	outWriter.Flush()
 	return &Stats{
 		MemoryReads:    memory.Reads,
@@ -132,3 +146,4 @@ func simulateSequential(input *BufferedPBReader, outFile *csv.Writer) *Stats {
 		CacheEvictions: cache.Evictions,
 	}
 }
+
