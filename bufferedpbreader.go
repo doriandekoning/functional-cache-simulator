@@ -12,7 +12,8 @@ import (
 )
 
 type BufferedPBReader struct {
-	reader bufio.Reader
+	reader     bufio.Reader
+	nextPacket *pb.Packet
 }
 
 func NewReader(path string) (*BufferedPBReader, error) {
@@ -79,13 +80,16 @@ func (b *BufferedPBReader) ReadBytes() (*[]byte, error) {
 func (b *BufferedPBReader) ReadPacket() (*pb.Packet, error) {
 	bytes, err := b.ReadBytes()
 	if err != nil {
+		//TODO fix last packet cannot be read currently
 		return nil, err
 	}
 	packet := &pb.Packet{}
 	if err := proto.Unmarshal(*bytes, packet); err != nil {
 		return nil, err
 	}
-	return packet, nil
+	retPacket := b.nextPacket
+	b.nextPacket = packet
+	return retPacket, nil
 }
 
 func (b *BufferedPBReader) ReadHeader() (*pb.PacketHeader, error) {
@@ -100,4 +104,11 @@ func (b *BufferedPBReader) ReadHeader() (*pb.PacketHeader, error) {
 	}
 	return packet, nil
 
+}
+
+func (b *BufferedPBReader) NextTick() uint64 {
+	if b.nextPacket != nil {
+		return b.nextPacket.GetTick()
+	}
+	return 0
 }

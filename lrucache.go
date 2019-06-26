@@ -2,6 +2,7 @@ package main
 
 import (
 	"container/list"
+	"fmt"
 )
 
 type CacheEntry struct {
@@ -21,6 +22,7 @@ type LRUCache struct {
 }
 
 func NewLRUCache(size int) *LRUCache {
+	fmt.Println("LRUSize", size)
 	return &LRUCache{
 		items:  list.New(),
 		values: make(map[uint64]*list.Element),
