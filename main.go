@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/doriandekoning/functional-cache-simulator/reader"
+	"github.com/doriandekoning/functional-cache-simulator/pkg/reader"
 )
 
 const cacheLineSize = 64 // Cache line size in bytes
@@ -19,7 +19,7 @@ const cacheSize = 64     // Cache size in lines
 
 var debuggingEnabled = false
 var bufferCompleteFile = false
-var batch = false
+var simulator = ""
 var batchSize = 1
 var outWriter *csv.Writer
 
@@ -37,7 +37,7 @@ func main() {
 	inputFiles := flag.String("inputs", "", "Input trace file to analyse")
 	outputFileLoc := flag.String("output", "", "Output")
 	flag.BoolVar(&debuggingEnabled, "debug", false, "If set to true additional debugging info will be logged")
-	flag.BoolVar(&batch, "batch", false, "If set to true batch processing will be used (less accurate but probably faster)")
+	flag.StringVar(&simulator, "simulator", "sequential", "Selects the simulator to use, options are: sequential(s), batch(b) or concurrent(c)")
 	flag.BoolVar(&bufferCompleteFile, "buffer-complete-file", false, "If set to true the complete file is read into memory before simulating")
 	flag.IntVar(&batchSize, "batchsize", 1, "Sets the batchsize, a larger value is faster but less accurate, a batch size of 1 results in the exact result")
 	flag.Parse()
@@ -84,12 +84,16 @@ func main() {
 	outWriter = csv.NewWriter(outFile)
 	var stats *Stats
 	t0 := time.Now()
-	if !batch {
-		fmt.Println("Simulating the cache sequentially")
+	fmt.Printf("Using %s simulator\n", simulator)
+	if simulator == "sequential" || simulator == "s" {
 		stats = simulateSequential(inputReaders[0], outWriter)
-	} else {
-		fmt.Println("Simulating the cache in a batch with size:", batchSize)
+	} else if simulator == "batch" || simulator == "b" {
 		stats = simulateBatch(inputReaders, outWriter)
+	} else if simulator == "concurrent" || simulator == "c" {
+		stats = SimulateConcurrent(inputReaders, outWriter)
+	} else {
+		fmt.Printf("Simulator type %s not known", simulator)
+		return
 	}
 	fmt.Println("Time spend on simulation: ", time.Since(t0))
 
@@ -146,4 +150,3 @@ func simulateSequential(input reader.PBReader, outFile *csv.Writer) *Stats {
 		CacheEvictions: cache.Evictions,
 	}
 }
-

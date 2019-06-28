@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	pb "github.com/doriandekoning/functional-cache-simulator/messages"
+	"github.com/doriandekoning/functional-cache-simulator/pkg/messages"
 
 	"github.com/gogo/protobuf/proto"
 )
@@ -15,8 +15,8 @@ const fileHeader = "gem5"
 
 type BufferedPBReader struct {
 	reader     bufio.Reader
-	nextPacket *pb.Packet
-	header     *pb.PacketHeader
+	nextPacket *messages.Packet
+	header     *messages.PacketHeader
 }
 
 func NewBufferedPBReader(path string) (*BufferedPBReader, error) {
@@ -38,7 +38,7 @@ func NewBufferedPBReader(path string) (*BufferedPBReader, error) {
 	if err != nil {
 		return nil, err
 	}
-	packet := &pb.Packet{}
+	packet := &messages.Packet{}
 	if err := proto.Unmarshal(*bytes, packet); err != nil {
 		return nil, err
 	}
@@ -94,13 +94,13 @@ func (b *BufferedPBReader) ReadBytes() (*[]byte, error) {
 	return &bytes, nil
 }
 
-func (b *BufferedPBReader) ReadPacket() (*pb.Packet, error) {
+func (b *BufferedPBReader) ReadPacket() (*messages.Packet, error) {
 	bytes, err := b.ReadBytes()
 	if err != nil {
 		//TODO fix last packet cannot be read currently refactor reader to have `HasNext() bool` function
 		return nil, err
 	}
-	packet := &pb.Packet{}
+	packet := &messages.Packet{}
 	if err := proto.Unmarshal(*bytes, packet); err != nil {
 
 		return nil, err
@@ -111,16 +111,16 @@ func (b *BufferedPBReader) ReadPacket() (*pb.Packet, error) {
 	return retPacket, nil
 }
 
-func (b *BufferedPBReader) GetHeader() *pb.PacketHeader {
+func (b *BufferedPBReader) GetHeader() *messages.PacketHeader {
 	return b.header
 }
 
-func (b *BufferedPBReader) readHeader() (*pb.PacketHeader, error) {
+func (b *BufferedPBReader) readHeader() (*messages.PacketHeader, error) {
 	bytes, err := b.ReadBytes()
 	if err != nil {
 		return nil, err
 	}
-	packet := &pb.PacketHeader{}
+	packet := &messages.PacketHeader{}
 	err = proto.Unmarshal(*bytes, packet)
 	if err != nil {
 		return nil, err

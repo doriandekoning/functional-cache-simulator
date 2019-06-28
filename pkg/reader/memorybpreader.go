@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/doriandekoning/functional-cache-simulator/messages"
-	pb "github.com/doriandekoning/functional-cache-simulator/messages"
+	"github.com/doriandekoning/functional-cache-simulator/pkg/messages"
 )
 
 type MemoryPbReader struct {
-	header  *pb.PacketHeader
+	header  *messages.PacketHeader
 	packets *list.List
 }
 
@@ -23,14 +22,14 @@ func NewMemoryPBReader(path string) (*MemoryPbReader, error) {
 	return &MemoryPbReader{header: header, packets: packets}, nil
 }
 
-func (r *MemoryPbReader) ReadPacket() (*pb.Packet, error) {
+func (r *MemoryPbReader) ReadPacket() (*messages.Packet, error) {
 	if front := r.packets.Front(); front != nil {
-		return r.packets.Remove(front).(*pb.Packet), nil
+		return r.packets.Remove(front).(*messages.Packet), nil
 	}
 	return nil, nil
 }
 
-func (r *MemoryPbReader) GetHeader() *pb.PacketHeader {
+func (r *MemoryPbReader) GetHeader() *messages.PacketHeader {
 	return r.header
 }
 
@@ -42,7 +41,7 @@ func (r *MemoryPbReader) NextTick() uint64 {
 	return *front.Value.(*messages.Packet).Tick
 }
 
-func readCompleteFile(path string) (*list.List, *pb.PacketHeader, error) {
+func readCompleteFile(path string) (*list.List, *messages.PacketHeader, error) {
 	packets := list.New()
 	bufReader, err := NewBufferedPBReader(path)
 	if err != nil {
