@@ -30,19 +30,16 @@ type FinishedMessage struct {
 }
 
 func SimulateConcurrent(inputs map[int]reader.PBReader, outFile *csv.Writer) *Stats {
-	stateChannel := make(chan map[uint64]*cachestate.State)
-	accessChannel := make(chan []*reader.Packet)
-	cacheChangeChan := make(chan []*CacheChange)
-	finishedChan := make(chan FinishedMessage)
-	statsChan := make(chan *Stats)
+	finishedChanel := make(chan FinishedMessage)
 
-	go worker(0, stateChannel, accessChannel, cacheChangeChan, finishedChan, statsChan)
-
-	stats := coordinator(inputs, stateChannel, accessChannel, cacheChangeChan, finishedChan)
+	stats := coordinator(inputs, finishedChanel)
 	return stats
 }
 
-func coordinator(inputReaders map[int]reader.PBReader, stateChan chan map[uint64]*cachestate.State, accessChan chan []*reader.Packet, cacheChangeChan chan []*CacheChange, finishedChan chan FinishedMessage) *Stats {
+func coordinator(inputReaders map[int]reader.PBReader, finishedChan chan FinishedMessage) *Stats {
+	statsChannel := make(chan *Stats)
+	cacheChangeChannel := make(chan []*CacheChange)
+
 	states := make(map[uint64]*cachestate.State)
 	for i := uint64(0); i < 5; i++ {
 		states[i] = cachestate.New(cacheSize)
@@ -61,11 +58,12 @@ func coordinator(inputReaders map[int]reader.PBReader, stateChan chan map[uint64
 			fmt.Println("Reached end of trace file")
 			return &Stats{}
 		}
-		stateChan <- states
-		accessChan <- packets
+
+		go worker(0, states, packets, cacheChangeChannel, finishedChan, statsChannel)
+
 		//Wait for accesses to be processed
 
-		cacheChanges := <-cacheChangeChan
+		cacheChanges := <-cacheChangeChannel
 		for _, cacheChange := range cacheChanges { //TODO parallelize for each state
 			state, found := states[cacheChange.cpuID]
 			if !found {
@@ -81,42 +79,40 @@ func coordinator(inputReaders map[int]reader.PBReader, stateChan chan map[uint64
 	return &Stats{}
 }
 
-//TODO maybe refactor worker to a struct with a "doWork" function
-func worker(workerID int, stateChan chan map[uint64]*cachestate.State, accessChan chan []*reader.Packet, cacheChangeChan chan []*CacheChange, finishedChan chan FinishedMessage, statsChan chan *Stats) {
+func worker(workerID int, states map[uint64]*cachestate.State, accesses []*reader.Packet, changeChan chan []*CacheChange, finishedChan chan FinishedMessage, statsChannel chan *Stats) {
 	stats := Stats{}
 	//TODO a way to exit this loop
-	for true {
-		states := <-stateChan
-		accesses := <-accessChan
-		cacheChanges := []*CacheChange{} //TODO make list
-		for _, access := range accesses {
-			state, found := states[access.CpuID]
-			if !found {
-				stats.CacheMisses++
+	// for true {
+	// states := <-stateChan
+	// accesses := <-accessChan
+	cacheChanges := []*CacheChange{} //TODO make list
+	for _, access := range accesses {
+		state, found := states[access.CpuID]
+		if !found {
+			stats.CacheMisses++
 
-				finishedChan <- FinishedMessage{workerID: workerID, error: fmt.Errorf("State for given cpuID not found"), stats: &stats}
-			}
-			cacheLine := access.GetAddr() - (access.GetAddr() % cacheLineSize)
-			//Handle a cache miss
-			if !state.Contains(cacheLine) {
-				cacheChanges = append(cacheChanges, &CacheChange{changeType: cachestate.ChangeTypeEvict, put: cacheLine, cpuID: access.CpuID})
-
-				//Search other caches
-				// foundInOtherCPU := false
-				// for _, state := range states {
-				// 	foundInOtherCPU = foundInOtherCPU || state.Contains(cacheLine) //TODO benchark this vs if
-				// }
-				// if !foundInOtherCPU {
-				// 	stats.MemoryReads++
-				// 	// cacheChangeChan <- &CacheChange{put: cacheLine, cpuID: access.CpuID}
-				// }
-				//Handle a cache hit
-			} else {
-				stats.CacheHits++
-				cacheChanges = append(cacheChanges, &CacheChange{changeType: cachestate.ChangeTypeMoveFront, put: cacheLine, cpuID: access.CpuID})
-			}
+			finishedChan <- FinishedMessage{workerID: workerID, error: fmt.Errorf("State for given cpuID not found"), stats: &stats}
 		}
-		cacheChangeChan <- cacheChanges
-		finishedChan <- FinishedMessage{workerID: workerID, stats: &stats}
+		cacheLine := access.GetAddr() - (access.GetAddr() % cacheLineSize)
+		//Handle a cache miss
+		if !state.Contains(cacheLine) {
+			cacheChanges = append(cacheChanges, &CacheChange{changeType: cachestate.ChangeTypeEvict, put: cacheLine, cpuID: access.CpuID})
+
+			//Search other caches
+			// foundInOtherCPU := false
+			// for _, state := range states {
+			// 	foundInOtherCPU = foundInOtherCPU || state.Contains(cacheLine) //TODO benchark this vs if
+			// }
+			// if !foundInOtherCPU {
+			// 	stats.MemoryReads++
+			// 	// cacheChangeChan <- &CacheChange{put: cacheLine, cpuID: access.CpuID}
+			// }
+			//Handle a cache hit
+		} else {
+			stats.CacheHits++
+			cacheChanges = append(cacheChanges, &CacheChange{changeType: cachestate.ChangeTypeMoveFront, put: cacheLine, cpuID: access.CpuID})
+		}
 	}
+	changeChan <- cacheChanges
+	finishedChan <- FinishedMessage{workerID: workerID, stats: &stats}
 }
