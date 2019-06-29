@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/doriandekoning/functional-cache-simulator/pkg/cachestate"
-	"github.com/doriandekoning/functional-cache-simulator/pkg/messages"
 	"github.com/doriandekoning/functional-cache-simulator/pkg/reader"
 )
 
@@ -30,14 +29,9 @@ type FinishedMessage struct {
 	error    error
 }
 
-type Packet struct {
-	*messages.Packet
-	CpuID uint64
-}
-
 func SimulateConcurrent(inputs map[int]reader.PBReader, outFile *csv.Writer) *Stats {
 	stateChannel := make(chan map[uint64]*cachestate.State)
-	accessChannel := make(chan []*Packet)
+	accessChannel := make(chan []*reader.Packet)
 	cacheChangeChan := make(chan []*CacheChange)
 	finishedChan := make(chan FinishedMessage)
 	statsChan := make(chan *Stats)
@@ -48,31 +42,25 @@ func SimulateConcurrent(inputs map[int]reader.PBReader, outFile *csv.Writer) *St
 	return stats
 }
 
-func coordinator(inputReaders map[int]reader.PBReader, stateChan chan map[uint64]*cachestate.State, accessChan chan []*Packet, cacheChangeChan chan []*CacheChange, finishedChan chan FinishedMessage) *Stats {
+func coordinator(inputReaders map[int]reader.PBReader, stateChan chan map[uint64]*cachestate.State, accessChan chan []*reader.Packet, cacheChangeChan chan []*CacheChange, finishedChan chan FinishedMessage) *Stats {
 	states := make(map[uint64]*cachestate.State)
 	for i := uint64(0); i < 5; i++ {
 		states[i] = cachestate.New(cacheSize)
 	}
-outer:
+	input, found := inputReaders[0]
+	if !found {
+		panic("Input reader not found")
+	}
 	for true {
 		//Push accesses
-		packets := []*Packet{}
-		for i := 0; i < 10; i++ {
-			input, found := inputReaders[0]
-			if !found {
-				break outer
-			}
-			packet, err := input.ReadPacket()
-			if err != nil {
-				panic(err)
-			} else if packet == nil {
-				fmt.Println("Simulated all packets")
-				return &Stats{}
-			}
-			packets = append(packets, &Packet{Packet: packet, CpuID: 0})
-
+		packets, err := reader.ReadMultiple(input, 10)
+		if err != nil {
+			panic(err)
 		}
-
+		if len(packets) == 0 {
+			fmt.Println("Reached end of trace file")
+			return &Stats{}
+		}
 		stateChan <- states
 		accessChan <- packets
 		//Wait for accesses to be processed
@@ -94,7 +82,7 @@ outer:
 }
 
 //TODO maybe refactor worker to a struct with a "doWork" function
-func worker(workerID int, stateChan chan map[uint64]*cachestate.State, accessChan chan []*Packet, cacheChangeChan chan []*CacheChange, finishedChan chan FinishedMessage, statsChan chan *Stats) {
+func worker(workerID int, stateChan chan map[uint64]*cachestate.State, accessChan chan []*reader.Packet, cacheChangeChan chan []*CacheChange, finishedChan chan FinishedMessage, statsChan chan *Stats) {
 	stats := Stats{}
 	//TODO a way to exit this loop
 	for true {

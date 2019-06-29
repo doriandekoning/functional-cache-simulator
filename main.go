@@ -77,7 +77,7 @@ func main() {
 		var err error
 		outFile, err = os.Create(*outputFileLoc)
 		if err != nil {
-			panic(fmt.Sprintf("Error while creating output file", err))
+			panic(fmt.Sprintf("Error while creating output file, %v", err))
 		}
 	}
 

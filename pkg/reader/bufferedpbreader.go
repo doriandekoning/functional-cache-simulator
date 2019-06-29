@@ -94,7 +94,7 @@ func (b *BufferedPBReader) ReadBytes() (*[]byte, error) {
 	return &bytes, nil
 }
 
-func (b *BufferedPBReader) ReadPacket() (*messages.Packet, error) {
+func (b *BufferedPBReader) ReadPacket() (*Packet, error) {
 	bytes, err := b.ReadBytes()
 	if err != nil {
 		//TODO fix last packet cannot be read currently refactor reader to have `HasNext() bool` function
@@ -108,7 +108,7 @@ func (b *BufferedPBReader) ReadPacket() (*messages.Packet, error) {
 	retPacket := b.nextPacket
 	b.nextPacket = packet
 
-	return retPacket, nil
+	return &Packet{Packet: retPacket}, nil
 }
 
 func (b *BufferedPBReader) GetHeader() *messages.PacketHeader {

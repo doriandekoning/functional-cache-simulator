@@ -22,9 +22,9 @@ func NewMemoryPBReader(path string) (*MemoryPbReader, error) {
 	return &MemoryPbReader{header: header, packets: packets}, nil
 }
 
-func (r *MemoryPbReader) ReadPacket() (*messages.Packet, error) {
+func (r *MemoryPbReader) ReadPacket() (*Packet, error) {
 	if front := r.packets.Front(); front != nil {
-		return r.packets.Remove(front).(*messages.Packet), nil
+		return r.packets.Remove(front).(*Packet), nil
 	}
 	return nil, nil
 }

@@ -25,7 +25,7 @@ func (t *TestCacheStateChange) GetPut() uint64 {
 }
 
 func (suite *CacheStateTestSuite) SetupTest() {
-	suite.state = New()
+	suite.state = New(2)
 }
 
 func (suite *CacheStateTestSuite) TestPutAddress() {
@@ -72,3 +72,5 @@ func (suite *CacheStateTestSuite) TestApplyStateChangeEvictAndEntrySameItem() {
 func TestRunCacheStateTestSuite(t *testing.T) {
 	suite.Run(t, new(CacheStateTestSuite))
 }
+
+//TODO test for cache size
