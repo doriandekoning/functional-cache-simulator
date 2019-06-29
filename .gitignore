@@ -52,3 +52,9 @@ Mkfile.old
 dkms.conf
 *.pb.go
 bin/
+
+*.in
+*.out
+debug
+.vscode/
+

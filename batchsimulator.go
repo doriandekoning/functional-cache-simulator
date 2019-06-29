@@ -7,7 +7,7 @@ package main
 
 // 	"github.com/doriandekoning/functional-cache-simulator/pkg/messages"
 // 	"github.com/doriandekoning/functional-cache-simulator/pkg/cachestate"
-// 	"github.com/doriandekoning/functional-cache-simulator/reader"
+// 	"github.com/doriandekoning/functional-cache-simulator/pkg/reader"
 // )
 
 
@@ -22,7 +22,7 @@ package main
 // 	}
 // 	states := make(map[int]*cachestate.State)
 // 	for i, _ := range inputs {
-// 		states[i] = cachestate.New()
+// 		states[i] = cachestate.New(64)//TODO variable
 // 	}
 
 // 	writeBack := 0

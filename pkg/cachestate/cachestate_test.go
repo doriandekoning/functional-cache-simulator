@@ -11,6 +11,19 @@ type CacheStateTestSuite struct {
 	state *State
 }
 
+type TestCacheStateChange struct {
+	changeType ChangeType
+	put        uint64
+}
+
+func (t *TestCacheStateChange) GetChangeType() ChangeType {
+	return t.changeType
+}
+
+func (t *TestCacheStateChange) GetPut() uint64 {
+	return t.put
+}
+
 func (suite *CacheStateTestSuite) SetupTest() {
 	suite.state = New()
 }
@@ -23,7 +36,7 @@ func (suite *CacheStateTestSuite) TestPutAddress() {
 
 func (suite *CacheStateTestSuite) TestApplyStateDoubleInsertShouldError() {
 	suite.state.putAddress(1)
-	suite.Error(suite.state.ApplyStateChange(&CacheStateChange{put: 1}))
+	suite.Error(suite.state.ApplyStateChange(&TestCacheStateChange{put: 1}))
 }
 
 func (suite *CacheStateTestSuite) TestPutAddresPutsInfront() {
@@ -35,22 +48,25 @@ func (suite *CacheStateTestSuite) TestPutAddresPutsInfront() {
 
 func (suite *CacheStateTestSuite) TestApplyStateChangeNoEvict() {
 	suite.False(suite.state.Contains(6))
-	suite.NoError(suite.state.ApplyStateChange(&CacheStateChange{put: 6}))
+	suite.NoError(suite.state.ApplyStateChange(&TestCacheStateChange{put: 6}))
 	suite.True(suite.state.Contains(6))
 }
 
 func (suite *CacheStateTestSuite) TestApplyStateChangeWithEvict() {
 	suite.state.putAddress(9)
-	evict := uint64(9)
-	suite.NoError(suite.state.ApplyStateChange(&CacheStateChange{put: 2, evict: &evict}))
+	suite.NoError(suite.state.ApplyStateChange(&TestCacheStateChange{put: 2, changeType: ChangeTypeEvict}))
 	suite.False(suite.state.Contains(9))
 	suite.True(suite.state.Contains(2))
 	suite.Equal(uint64(2), suite.state.lruList.Front().Value)
 }
 
 func (suite *CacheStateTestSuite) TestApplyStateChangeEvictNotInCacheError() {
-	evict := uint64(8)
-	suite.Error(suite.state.ApplyStateChange(&CacheStateChange{put: 2, evict: &evict}))
+	suite.Error(suite.state.ApplyStateChange(&TestCacheStateChange{put: 2, changeType: ChangeTypeEvict}))
+}
+
+func (suite *CacheStateTestSuite) TestApplyStateChangeEvictAndEntrySameItem() {
+	suite.state.putAddress(8)
+	suite.NoError(suite.state.ApplyStateChange(&TestCacheStateChange{put: 8, changeType: ChangeTypeEvict}))
 }
 
 func TestRunCacheStateTestSuite(t *testing.T) {

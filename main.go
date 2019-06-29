@@ -88,7 +88,7 @@ func main() {
 	if simulator == "sequential" || simulator == "s" {
 		stats = simulateSequential(inputReaders[0], outWriter)
 	} else if simulator == "batch" || simulator == "b" {
-		stats = simulateBatch(inputReaders, outWriter)
+		// stats = simulateBatch(inputReaders, outWriter)
 	} else if simulator == "concurrent" || simulator == "c" {
 		stats = SimulateConcurrent(inputReaders, outWriter)
 	} else {
@@ -114,8 +114,8 @@ func simulateSequential(input reader.PBReader, outFile *csv.Writer) *Stats {
 	cache.Memory = memory
 	for true {
 		packet, err := input.ReadPacket()
-		if err == io.EOF {
-			fmt.Println("EOF reached")
+		if packet == nil {
+			fmt.Println("Simulated all packets")
 			break
 		} else if err != nil {
 			panic(err)
