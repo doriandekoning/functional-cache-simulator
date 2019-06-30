@@ -96,7 +96,9 @@ func (b *BufferedPBReader) ReadBytes() (*[]byte, error) {
 
 func (b *BufferedPBReader) ReadPacket() (*Packet, error) {
 	bytes, err := b.ReadBytes()
-	if err != nil {
+	if err == io.EOF {
+		return nil, nil
+	} else if err != nil {
 		//TODO fix last packet cannot be read currently refactor reader to have `HasNext() bool` function
 		return nil, err
 	}
