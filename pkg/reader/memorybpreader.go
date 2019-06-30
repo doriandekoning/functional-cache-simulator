@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/doriandekoning/functional-cache-simulator/pkg/messages"
+	"github.com/pkg/errors"
 )
 
 type MemoryPbReader struct {
@@ -22,9 +23,9 @@ func NewMemoryPBReader(path string) (*MemoryPbReader, error) {
 	return &MemoryPbReader{header: header, packets: packets}, nil
 }
 
-func (r *MemoryPbReader) ReadPacket() (*Packet, error) {
+func (r *MemoryPbReader) ReadPacket() (*messages.Packet, error) {
 	if front := r.packets.Front(); front != nil {
-		return r.packets.Remove(front).(*Packet), nil
+		return r.packets.Remove(front).(*messages.Packet), nil
 	}
 	return nil, nil
 }
@@ -45,7 +46,7 @@ func readCompleteFile(path string) (*list.List, *messages.PacketHeader, error) {
 	packets := list.New()
 	bufReader, err := NewBufferedPBReader(path)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.Wrap(err, "Error while creating new PBReader")
 	}
 	i := 0
 	for true {
@@ -53,7 +54,7 @@ func readCompleteFile(path string) (*list.List, *messages.PacketHeader, error) {
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			return nil, nil, err
+			return nil, nil, errors.Wrap(err, "Error while reading packet")
 		}
 		if nextPacket == nil {
 			break

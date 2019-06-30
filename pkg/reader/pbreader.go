@@ -3,18 +3,13 @@ package reader
 import "github.com/doriandekoning/functional-cache-simulator/pkg/messages"
 
 type PBReader interface {
-	ReadPacket() (*Packet, error)
+	ReadPacket() (*messages.Packet, error)
 	GetHeader() *messages.PacketHeader
 	NextTick() uint64
 }
 
-type Packet struct {
-	*messages.Packet
-	CpuID uint64
-}
-
-func ReadMultiple(r PBReader, n int) ([]*Packet, error) {
-	result := []*Packet{}
+func ReadMultiple(r PBReader, n int) ([]*messages.Packet, error) {
+	result := []*messages.Packet{}
 	for i := 0; i < n; i++ {
 		nextPacket, err := r.ReadPacket()
 		if err != nil {
@@ -23,7 +18,6 @@ func ReadMultiple(r PBReader, n int) ([]*Packet, error) {
 		if nextPacket == nil {
 			return result, nil
 		}
-		nextPacket.CpuID = 0
 		result = append(result, nextPacket)
 	}
 	return result, nil

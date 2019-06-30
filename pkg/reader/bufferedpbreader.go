@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/doriandekoning/functional-cache-simulator/pkg/messages"
+	"github.com/pkg/errors"
 
 	"github.com/gogo/protobuf/proto"
 )
@@ -86,7 +87,7 @@ func (b *BufferedPBReader) ReadBytes() (*[]byte, error) {
 	n, err := io.ReadFull(&b.reader, bytes)
 	//TODO handle EOF
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "reading bytes")
 	}
 	if size != uint64(n) {
 		return nil, fmt.Errorf("Not enough bytes read %d, %d", size, n)
@@ -94,23 +95,22 @@ func (b *BufferedPBReader) ReadBytes() (*[]byte, error) {
 	return &bytes, nil
 }
 
-func (b *BufferedPBReader) ReadPacket() (*Packet, error) {
+func (b *BufferedPBReader) ReadPacket() (*messages.Packet, error) {
 	bytes, err := b.ReadBytes()
 	if err == io.EOF {
 		return nil, nil
 	} else if err != nil {
 		//TODO fix last packet cannot be read currently refactor reader to have `HasNext() bool` function
-		return nil, err
+		return nil, errors.Wrap(err, "Reading bytes for packet")
 	}
 	packet := &messages.Packet{}
 	if err := proto.Unmarshal(*bytes, packet); err != nil {
-
-		return nil, err
+		return nil, errors.Wrap(err, "Unmarshalling packet")
 	}
 	retPacket := b.nextPacket
 	b.nextPacket = packet
 
-	return &Packet{Packet: retPacket}, nil
+	return retPacket, nil
 }
 
 func (b *BufferedPBReader) GetHeader() *messages.PacketHeader {

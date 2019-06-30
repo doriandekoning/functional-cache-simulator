@@ -15,7 +15,7 @@ import (
 )
 
 const cacheLineSize = 64 // Cache line size in bytes
-const cacheSize = 64     // Cache size in lines
+const cacheSize = 8196   // Cache size in lines
 
 var debuggingEnabled = false
 var bufferCompleteFile = false
@@ -36,6 +36,7 @@ type Stats struct {
 func main() {
 	inputFiles := flag.String("inputs", "", "Input trace file to analyse")
 	outputFileLoc := flag.String("output", "", "Output")
+	numThreads := flag.Int("threads", 1, "Specify the amount of threads to use for concurrents simulation")
 	flag.BoolVar(&debuggingEnabled, "debug", false, "If set to true additional debugging info will be logged")
 	flag.StringVar(&simulator, "simulator", "sequential", "Selects the simulator to use, options are: sequential(s), batch(b) or concurrent(c)")
 	flag.BoolVar(&bufferCompleteFile, "buffer-complete-file", false, "If set to true the complete file is read into memory before simulating")
@@ -56,6 +57,7 @@ func main() {
 		if !bufferCompleteFile {
 			in, err = reader.NewBufferedPBReader(inputF)
 			if err != nil {
+				fmt.Println(inputF)
 				panic(err)
 			}
 
@@ -90,7 +92,7 @@ func main() {
 	} else if simulator == "batch" || simulator == "b" {
 		// stats = simulateBatch(inputReaders, outWriter)
 	} else if simulator == "concurrent" || simulator == "c" {
-		stats = SimulateConcurrent(inputReaders, outWriter)
+		stats = SimulateConcurrent(inputReaders, outWriter, *numThreads, batchSize)
 	} else {
 		fmt.Printf("Simulator type %s not known", simulator)
 		return
