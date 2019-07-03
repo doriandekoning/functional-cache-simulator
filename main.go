@@ -37,6 +37,7 @@ func main() {
 	inputFiles := flag.String("inputs", "", "Input trace file to analyse")
 	outputFileLoc := flag.String("output", "", "Output")
 	numThreads := flag.Int("threads", 1, "Specify the amount of threads to use for concurrents simulation")
+	maxBuffer := flag.Int("maxbuffer", -1, "The amount of accesses the memreader reads into memory")
 	flag.BoolVar(&debuggingEnabled, "debug", false, "If set to true additional debugging info will be logged")
 	flag.StringVar(&simulator, "simulator", "sequential", "Selects the simulator to use, options are: sequential(s), batch(b) or concurrent(c)")
 	flag.BoolVar(&bufferCompleteFile, "buffer-complete-file", false, "If set to true the complete file is read into memory before simulating")
@@ -62,7 +63,7 @@ func main() {
 			}
 
 		} else {
-			in, err = reader.NewMemoryPBReader(inputF)
+			in, err = reader.NewMemoryPBReader(inputF, *maxBuffer)
 		}
 		if err != nil {
 			panic(err)

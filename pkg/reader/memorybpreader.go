@@ -14,8 +14,8 @@ type MemoryPbReader struct {
 	packets *list.List
 }
 
-func NewMemoryPBReader(path string) (*MemoryPbReader, error) {
-	packets, header, err := readCompleteFile(path)
+func NewMemoryPBReader(path string, maxPackets int) (*MemoryPbReader, error) {
+	packets, header, err := readCompleteFile(path, maxPackets)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +42,7 @@ func (r *MemoryPbReader) NextTick() uint64 {
 	return *front.Value.(*messages.Packet).Tick
 }
 
-func readCompleteFile(path string) (*list.List, *messages.PacketHeader, error) {
+func readCompleteFile(path string, max int) (*list.List, *messages.PacketHeader, error) {
 	packets := list.New()
 	bufReader, err := NewBufferedPBReader(path)
 	if err != nil {
@@ -60,6 +60,10 @@ func readCompleteFile(path string) (*list.List, *messages.PacketHeader, error) {
 			break
 		}
 		packets.PushBack(nextPacket)
+		if i > max {
+			fmt.Println("Reached limit on amount of packets to read")
+			break
+		}
 		i++
 	}
 	return packets, bufReader.GetHeader(), nil
