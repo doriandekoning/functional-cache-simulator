@@ -52,7 +52,12 @@ func coordinator(inputReaders map[int]reader.PBReader, finishedChan chan Finishe
 	}
 	timeSpentSeq := time.Duration(0)
 	timeSpentParallel := time.Duration(0)
+	counter := 0
 	for true {
+		counter++
+		if counter%100000 == 0 {
+			fmt.Println("Processed:", counter, "batches")
+		}
 		startP1 := time.Now()
 		for i := 0; i < numThreads; i++ {
 			//Push accesses
@@ -112,7 +117,10 @@ func worker(workerID int, states map[uint64]*cachestate.State, accesses []*messa
 			//Search other caches
 			foundInOtherCPU := false
 			for _, state := range states {
-				foundInOtherCPU = foundInOtherCPU || state.Contains(cacheLine) //TODO benchark this vs if
+				foundInOtherCPU = foundInOtherCPU || state.Contains(cacheLine)
+				if foundInOtherCPU {
+					break
+				}
 			}
 			if !foundInOtherCPU {
 				stats.MemoryReads++

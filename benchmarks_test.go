@@ -2,6 +2,8 @@ package main
 
 import (
 	"container/list"
+	"fmt"
+	"math/rand"
 	"testing"
 
 	"github.com/doriandekoning/functional-cache-simulator/pkg/messages"
@@ -20,3 +22,4 @@ func BenchmarkList(b *testing.B) {
 		l.PushBack(&messages.Packet{})
 	}
 }
+
