@@ -34,6 +34,7 @@ func (c *ChanneledPBReader) PushPackets() {
 		}
 		c.channel <- nextPacket
 	}
+	c.channel <- nil
 }
 
 func (c *ChanneledPBReader) GetChannel() chan *messages.Packet {

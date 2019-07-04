@@ -14,7 +14,7 @@ import (
 )
 
 const cacheLineSize = 64 // Cache line size in bytes
-const cacheSize = 1      //131072   // Cache size in lines (8MiB/64 bytes/line)
+const cacheSize = 131072 // Cache size in lines (8MiB/64 bytes/line)
 const numCacheSets = 8
 
 var debuggingEnabled = false
@@ -90,6 +90,12 @@ func main() {
 	fmt.Printf("Using %s simulator\n", simulator)
 	if simulator == "sequential" || simulator == "s" {
 		stats = simulateSequential(inputReaders[0], outWriter)
+	} else if simulator == "parallelset" || simulator == "ps" {
+		channelReader, err := reader.NewChanneledPBReader(inputReaders[0])
+		if err != nil {
+			panic(err)
+		}
+		stats = SimulateParallelSet(channelReader.GetChannel(), outWriter)
 	} else if simulator == "concurrent" || simulator == "c" {
 		channelReader, err := reader.NewChanneledPBReader(inputReaders[0])
 		if err != nil {
