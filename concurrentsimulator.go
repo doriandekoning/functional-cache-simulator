@@ -7,130 +7,133 @@ import (
 
 	"github.com/doriandekoning/functional-cache-simulator/pkg/cachestate"
 	"github.com/doriandekoning/functional-cache-simulator/pkg/messages"
-	"github.com/doriandekoning/functional-cache-simulator/pkg/reader"
 )
 
-type CacheChange struct {
-	changeType cachestate.ChangeType
-	put        uint64
-	timestamp  uint64
-	cpuID      uint64
+var cacheSets = 1
+var numCpus = 8
+
+type StateChange struct {
+	newState cachestate.CacheLineState
+	address  uint64
 }
 
-func (change *CacheChange) GetChangeType() cachestate.ChangeType {
-	return change.changeType
+func (s *StateChange) GetNewState() cachestate.CacheLineState {
+	return s.newState
 }
 
-func (change *CacheChange) GetPut() uint64 {
-	return change.put
+func (s *StateChange) GetAddress() uint64 {
+	return s.address
 }
 
-type FinishedMessage struct {
-	workerID int
-	stats    *Stats
-	error    error
-}
-
-func SimulateConcurrent(inputs map[int]reader.PBReader, outFile *csv.Writer, numThreads int, batchSize int) *Stats {
+func SimulateConcurrent(inputChannel chan *messages.Packet, outFile *csv.Writer, numThreads int, batchSize int) *Stats {
 	fmt.Println("Using:", numThreads, "threads")
-	finishedChanel := make(chan FinishedMessage, 3)
 
-	stats := coordinator(inputs, finishedChanel, numThreads, batchSize)
-	return stats
-}
-
-func coordinator(inputReaders map[int]reader.PBReader, finishedChan chan FinishedMessage, numThreads int, batchSize int) *Stats {
-	cacheChangeChannel := make(chan []*CacheChange, numThreads*batchSize)
-
-	states := make(map[uint64]*cachestate.State)
-	for i := uint64(0); i < 8; i++ {
-		states[i] = cachestate.New(cacheSize)
+	//Initialize updateachannels
+	updateChannels := make([][]chan cachestate.CacheStateChange, cacheSets)
+	for i := 0; i < cacheSets; i++ {
+		updateChannels[i] = make([]chan cachestate.CacheStateChange, numCpus)
+		for j := 0; j < numCpus; j++ {
+			updateChannels[i][j] = make(chan cachestate.CacheStateChange, 10) //TODO make size dynamic
+		}
 	}
-	input, found := inputReaders[0]
-	if !found {
-		panic("Input reader not found")
+	//Initialize stateChannels
+	stateChannels := make([]chan *[][]cachestate.State, numThreads)
+	for i := 0; i < numThreads; i++ {
+		stateChannels[i] = make(chan *[][]cachestate.State, 10)
 	}
-	timeSpentSeq := time.Duration(0)
-	timeSpentParallel := time.Duration(0)
-	counter := 0
+	//Setup accessWorker threads
+	for i := 0; i < numThreads; i++ {
+		go accessWorker(inputChannel, stateChannels[i], updateChannels)
+	}
+
+	states := make([][]cachestate.State, cacheSets)
 	for true {
-		counter++
-		if counter%100000 == 0 {
-			fmt.Println("Processed:", counter, "batches")
+		for i := 0; i < cacheSets; i++ {
+			states[i] = make([]cachestate.State, numCpus)
+			for j := 0; j < numCpus; j++ {
+				states[i][j] = *cachestate.New(100)
+				retChannel := make(chan *cachestate.State)
+				stateUpdateWorker(updateChannels[i][j], states[i][j].Copy(), retChannel)
+				states[i][j] = *<-retChannel
+			}
 		}
-		startP1 := time.Now()
+		time.Sleep(5 * time.Second)
 		for i := 0; i < numThreads; i++ {
-			//Push accesses
-			packets, err := reader.ReadMultiple(input, batchSize) //TODO divide input smarter
-			if err != nil {
-				panic(err)
-			}
-			if len(packets) == 0 {
-				fmt.Println("Reached end of trace file")
-				fmt.Println("Sequential:", timeSpentSeq)
-				fmt.Println("Parallel:", timeSpentParallel)
-				return &Stats{}
-			}
-			go worker(0, states, packets, cacheChangeChannel)
+			stateChannels[i] <- &states
 		}
-		timeSpentSeq += time.Now().Sub(startP1)
-		startP2 := time.Now()
-		//Wait for accesses to be processed
-		cacheChanges := []*CacheChange{}
-		for i := 0; i < numThreads; i++ {
-			changes := <-cacheChangeChannel
-			cacheChanges = append(cacheChanges, changes...)
-		}
-		timeSpentParallel += time.Now().Sub(startP2)
-		startP3 := time.Now()
-		for _, cacheChange := range cacheChanges { //TODO parallelize for each state
-			state, found := states[cacheChange.cpuID]
-			if !found {
-				panic("Cannot find state for given cpuid")
-			}
-			err := state.ApplyStateChange(cacheChange)
-			if err != nil {
-				panic(err)
-			}
-		}
-		timeSpentSeq += time.Now().Sub(startP3)
-
 	}
 
 	return &Stats{}
+	// finishedChanel := make(chan FinishedMessage, 3)
+
 }
 
-func worker(workerID int, states map[uint64]*cachestate.State, accesses []*messages.Packet, changeChan chan []*CacheChange) {
-	stats := Stats{}
-	cacheChanges := []*CacheChange{}
-	for _, access := range accesses {
-		state, found := states[access.GetCpuID()]
-		if !found {
-			stats.CacheMisses++
-			return
+//Update chans is a map where the first index specifies the cache set and the second the cache
+func accessWorker(input chan *messages.Packet, stateChan chan *[][]cachestate.State, updateChans [][]chan cachestate.CacheStateChange) {
+	var states *[][]cachestate.State
+	i := 0
+	for true {
+		if i%100 == 0 {
+			states = <-stateChan
 		}
-		cacheLine := access.GetAddr() - (access.GetAddr() % cacheLineSize)
-		//Handle a cache miss
-		if !state.Contains(cacheLine) {
-			cacheChanges = append(cacheChanges, &CacheChange{changeType: cachestate.ChangeTypeEvict, put: cacheLine, cpuID: access.GetCpuID()})
-
-			//Search other caches
-			foundInOtherCPU := false
-			for _, state := range states {
-				foundInOtherCPU = foundInOtherCPU || state.Contains(cacheLine)
-				if foundInOtherCPU {
-					break
+		i++
+		curAccess := <-input
+		write := curAccess.GetCmd() != 1
+		cacheSet := determineCacheSet(curAccess.GetAddr())
+		curState := (*states)[cacheSet][curAccess.GetCpuID()].GetState(curAccess.GetAddr())
+		if write {
+			if curState == cachestate.STATE_INVALID || curState == cachestate.STATE_SHARED {
+				//PrWrI: accessing processor to M others to I
+				//PrWrS: that processor to M others to I
+				for i := range (*states)[cacheSet] {
+					stateChange := StateChange{
+						address:  curAccess.GetAddr(),
+						newState: cachestate.STATE_MODIFIED,
+					}
+					if i == int(curAccess.GetCpuID()) {
+						stateChange.newState = cachestate.STATE_MODIFIED
+					}
+					updateChans[cacheSet][i] <- &stateChange
 				}
+			} else if curState == cachestate.STATE_MODIFIED {
+				//PrWrM: accessing processor to M others stays same
+				stateChange := StateChange{
+					address:  curAccess.GetAddr(),
+					newState: cachestate.STATE_MODIFIED,
+				}
+				updateChans[cacheSet][int(curAccess.GetCpuID())] <- &stateChange
+			} else {
+				panic("Dont know what to do")
 			}
-			if !foundInOtherCPU {
-				stats.MemoryReads++
-				cacheChanges = append(cacheChanges, &CacheChange{put: cacheLine, cpuID: access.GetCpuID()})
-			}
-			//Handle a cache hit
 		} else {
-			stats.CacheHits++
-			cacheChanges = append(cacheChanges, &CacheChange{changeType: cachestate.ChangeTypeMoveFront, put: cacheLine, cpuID: access.GetCpuID()})
+			if curState == cachestate.STATE_INVALID {
+				//PrRdI: accessing processor to S others to S
+				for i := range (*states)[cacheSet] {
+					stateChange := StateChange{
+						address:  curAccess.GetAddr(),
+						newState: cachestate.STATE_SHARED,
+					}
+					updateChans[cacheSet][i] <- &stateChange
+				}
+			} else if curState == cachestate.STATE_MODIFIED {
+				//PrRdM: nothing
+			} else if curState == cachestate.STATE_SHARED {
+				//PrRdS: nothing
+			} else {
+				panic("Dont know what to do")
+			}
 		}
 	}
-	changeChan <- cacheChanges
+}
+
+func stateUpdateWorker(in chan cachestate.CacheStateChange, newState cachestate.State, retChannel chan *cachestate.State) { //TODO refactor in and out to channels
+	for i := 0; i < 100; i++ {
+		<-in
+		newState.ApplyStateChange(<-in)
+	}
+	retChannel <- &newState
+}
+
+func determineCacheSet(address uint64) int {
+	return int(address) % cacheSets //TODO realistic mapping
 }

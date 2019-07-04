@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/doriandekoning/functional-cache-simulator/pkg/cachestate"
 	"github.com/doriandekoning/functional-cache-simulator/pkg/reader"
 )
 
@@ -93,7 +94,11 @@ func main() {
 	} else if simulator == "batch" || simulator == "b" {
 		// stats = simulateBatch(inputReaders, outWriter)
 	} else if simulator == "concurrent" || simulator == "c" {
-		stats = SimulateConcurrent(inputReaders, outWriter, *numThreads, batchSize)
+		channelReader, err := reader.NewChanneledPBReader(inputReaders[0])
+		if err != nil {
+			panic(err)
+		}
+		stats = SimulateConcurrent(channelReader.GetChannel(), outWriter, *numThreads, batchSize)
 	} else {
 		fmt.Printf("Simulator type %s not known", simulator)
 		return
@@ -110,46 +115,3 @@ func main() {
 	fmt.Println("-----------------------")
 }
 
-func simulateSequential(input reader.PBReader, outFile *csv.Writer) *Stats {
-
-	memory := NewMemory()
-	cache := NewLRUCache(cacheSize)
-	cache.Memory = memory
-	for true {
-		packet, err := input.ReadPacket()
-		if packet == nil {
-			fmt.Println("Simulated all packets")
-			break
-		} else if err != nil {
-			panic(err)
-		} else if packet == nil {
-			break
-		}
-		cacheLine := packet.GetAddr() - (packet.GetAddr() % cacheLineSize)
-		if packet.GetCmd() == 1 {
-
-			var hm = "h"
-			hit := cache.Get(cacheLine)
-			if !hit {
-				hm = "m"
-				cache.Set(cacheLine)
-
-			}
-			outWriter.Write([]string{strconv.FormatUint(packet.GetAddr(), 10), hm})
-		} else {
-			cache.Set(cacheLine)
-			//Assume write through cache, where each write is written back to memory (in the order the cache received them)
-			outWriter.Write([]string{strconv.FormatUint(packet.GetAddr(), 10), "h"})
-		}
-
-	}
-	outWriter.Flush()
-	return &Stats{
-		MemoryReads:    memory.Reads,
-		MemoryWrites:   memory.Writes,
-		CacheWrites:    cache.Writes,
-		CacheMisses:    cache.Misses,
-		CacheHits:      cache.Hits,
-		CacheEvictions: cache.Evictions,
-	}
-}

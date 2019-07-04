@@ -11,17 +11,21 @@ type CacheStateTestSuite struct {
 	state *State
 }
 
+func TestRunCacheStateTestSuite(t *testing.T) {
+	suite.Run(t, new(CacheStateTestSuite))
+}
+
 type TestCacheStateChange struct {
-	changeType ChangeType
-	put        uint64
+	newState CacheLineState
+	address  uint64
 }
 
-func (t *TestCacheStateChange) GetChangeType() ChangeType {
-	return t.changeType
+func (t *TestCacheStateChange) GetAddress() uint64 {
+	return t.address
 }
 
-func (t *TestCacheStateChange) GetPut() uint64 {
-	return t.put
+func (t *TestCacheStateChange) GetNewState() CacheLineState {
+	return t.newState
 }
 
 func (suite *CacheStateTestSuite) SetupTest() {
@@ -29,48 +33,146 @@ func (suite *CacheStateTestSuite) SetupTest() {
 }
 
 func (suite *CacheStateTestSuite) TestPutAddress() {
-	suite.False(suite.state.Contains(1))
-	suite.state.putAddress(1)
-	suite.True(suite.state.Contains(1))
+	suite.NotEqual(STATE_INVALID, suite.state.GetState(1))
+	suite.state.putAddress(1, STATE_SHARED)
+	suite.Equal(STATE_SHARED, suite.state.GetState(1))
 }
 
 func (suite *CacheStateTestSuite) TestApplyStateDoubleInsertShouldError() {
-	suite.state.putAddress(1)
-	suite.Error(suite.state.ApplyStateChange(&TestCacheStateChange{put: 1}))
+	suite.state.putAddress(1, STATE_SHARED)
+	suite.Error(suite.state.ApplyStateChange(&TestCacheStateChange{address: 1}))
 }
 
-func (suite *CacheStateTestSuite) TestPutAddresPutsInfront() {
-	suite.state.putAddress(1)
-	suite.state.putAddress(2)
-	suite.state.putAddress(3)
-	suite.Equal(uint64(3), suite.state.lruList.Front().Value)
+func (suite *CacheStateTestSuite) TestMSIStateChange() {
+	var tests = []struct {
+		name       string
+		curState   CacheLineState
+		write      bool
+		newState   CacheLineState
+		busRequest BusRequest
+	}{
+		{
+			name:       "InvalidPrRd",
+			curState:   STATE_INVALID,
+			write:      false,
+			newState:   STATE_SHARED,
+			busRequest: BUS_READ,
+		},
+		{
+			name:       "InvalidPrWr",
+			curState:   STATE_INVALID,
+			write:      true,
+			newState:   STATE_MODIFIED,
+			busRequest: BUS_READX,
+		},
+		{
+			name:       "SharedPrRd",
+			curState:   STATE_SHARED,
+			write:      false,
+			newState:   STATE_SHARED,
+			busRequest: BUS_NOTHING,
+		},
+		{
+			name:       "SharedPrWr",
+			curState:   STATE_SHARED,
+			write:      true,
+			newState:   STATE_MODIFIED,
+			busRequest: BUS_UPGR,
+		},
+		{
+			name:       "ModifiedPrRd",
+			curState:   STATE_MODIFIED,
+			write:      false,
+			newState:   STATE_MODIFIED,
+			busRequest: BUS_NOTHING,
+		},
+		{
+			name:       "ModifiedPrWr",
+			curState:   STATE_MODIFIED,
+			write:      true,
+			newState:   STATE_MODIFIED,
+			busRequest: BUS_NOTHING,
+		},
+	}
+	for _, test := range tests {
+		suite.Run(test.name, func() {
+			addressState, busRequest := GetMSIStateChange(test.curState, test.write)
+			suite.Equal(test.newState, addressState)
+			suite.Equal(test.busRequest, busRequest)
+		})
+	}
 }
 
-func (suite *CacheStateTestSuite) TestApplyStateChangeNoEvict() {
-	suite.False(suite.state.Contains(6))
-	suite.NoError(suite.state.ApplyStateChange(&TestCacheStateChange{put: 6}))
-	suite.True(suite.state.Contains(6))
+func (suite *CacheStateTestSuite) TestMSIStateBusRequestChange() {
+	var tests = []struct {
+		name       string
+		curState   CacheLineState
+		busRequest BusRequest
+		newState   CacheLineState
+		flush      bool
+	}{
+		{
+			name:       "InvalidBusRd",
+			curState:   STATE_INVALID,
+			busRequest: BUS_READ,
+			newState:   STATE_INVALID,
+			flush:      false,
+		},
+		{
+			name:       "InvalidBusRdX",
+			curState:   STATE_INVALID,
+			busRequest: BUS_READX,
+			newState:   STATE_INVALID,
+			flush:      false,
+		},
+		{
+			name:       "InvalidBusUpgr",
+			curState:   STATE_INVALID,
+			busRequest: BUS_UPGR,
+			newState:   STATE_INVALID,
+			flush:      false,
+		},
+		{
+			name:       "SharedBusRd",
+			curState:   STATE_SHARED,
+			busRequest: BUS_READ,
+			newState:   STATE_SHARED,
+			flush:      false,
+		},
+		{
+			name:       "SharedBusRdX",
+			curState:   STATE_SHARED,
+			busRequest: BUS_READX,
+			newState:   STATE_INVALID,
+			flush:      false,
+		},
+		{
+			name:       "SharedBusUpgr",
+			curState:   STATE_SHARED,
+			busRequest: BUS_UPGR,
+			newState:   STATE_INVALID,
+			flush:      false,
+		},
+		{
+			name:       "ModifiedBusRd",
+			curState:   STATE_MODIFIED,
+			busRequest: BUS_READ,
+			newState:   STATE_SHARED,
+			flush:      true,
+		},
+		{
+			name:       "ModifiedBusRdX",
+			curState:   STATE_MODIFIED,
+			busRequest: BUS_READX,
+			newState:   STATE_INVALID,
+			flush:      true,
+		},
+	}
+	for _, test := range tests {
+		suite.Run(test.name, func() {
+			addressState, flush := GetMSIStateChangeByBusRequest(test.curState, test.busRequest)
+			suite.Equal(test.newState, addressState)
+			suite.Equal(test.flush, flush)
+		})
+	}
 }
-
-func (suite *CacheStateTestSuite) TestApplyStateChangeWithEvict() {
-	suite.state.putAddress(9)
-	suite.NoError(suite.state.ApplyStateChange(&TestCacheStateChange{put: 2, changeType: ChangeTypeEvict}))
-	suite.False(suite.state.Contains(9))
-	suite.True(suite.state.Contains(2))
-	suite.Equal(uint64(2), suite.state.lruList.Front().Value)
-}
-
-func (suite *CacheStateTestSuite) TestApplyStateChangeEvictNotInCacheError() {
-	suite.Error(suite.state.ApplyStateChange(&TestCacheStateChange{put: 2, changeType: ChangeTypeEvict}))
-}
-
-func (suite *CacheStateTestSuite) TestApplyStateChangeEvictAndEntrySameItem() {
-	suite.state.putAddress(8)
-	suite.NoError(suite.state.ApplyStateChange(&TestCacheStateChange{put: 8, changeType: ChangeTypeEvict}))
-}
-
-func TestRunCacheStateTestSuite(t *testing.T) {
-	suite.Run(t, new(CacheStateTestSuite))
-}
-
-//TODO test for cache size
