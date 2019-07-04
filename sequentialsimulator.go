@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/doriandekoning/functional-cache-simulator/pkg/cachestate"
+	"github.com/doriandekoning/functional-cache-simulator/pkg/cacheset"
 	"github.com/doriandekoning/functional-cache-simulator/pkg/reader"
 )
 
@@ -13,9 +13,9 @@ func simulateSequential(input reader.PBReader, outFile *csv.Writer) *Stats {
 	//TODO cachesets
 
 	//Setup states
-	states := make([]*cachestate.State, numCpus)
+	states := make([]*cacheset.State, numCpus)
 	for i := range states {
-		states[i] = cachestate.New(cacheSize)
+		states[i] = cacheset.New(cacheSize)
 	}
 	var packetsProcessed uint64
 	for true {
@@ -30,7 +30,7 @@ func simulateSequential(input reader.PBReader, outFile *csv.Writer) *Stats {
 		}
 		cacheLine := packet.GetAddr() - (packet.GetAddr() % cacheLineSize)
 		currentState := states[packet.GetCpuID()].GetState(cacheLine)
-		newState, busReq := cachestate.GetMSIStateChange(currentState, packet.GetCmd() == 1)
+		newState, busReq := cacheset.GetMSIStateChange(currentState, packet.GetCmd() == 1)
 		err = states[packet.GetCpuID()].ApplyStateChange(&StateChange{address: cacheLine, newState: newState})
 		if err != nil {
 			panic(err)
@@ -39,9 +39,9 @@ func simulateSequential(input reader.PBReader, outFile *csv.Writer) *Stats {
 		for i := range states {
 			if uint64(i) != packet.GetCpuID() {
 				oldState := states[i].GetState(cacheLine)
-				if oldState != cachestate.STATE_INVALID {
+				if oldState != cacheset.STATE_INVALID {
 					foundInOtherCpu = true
-					newState, flush := cachestate.GetMSIStateChangeByBusRequest(oldState, busReq)
+					newState, flush := cacheset.GetMSIStateChangeByBusRequest(oldState, busReq)
 					if flush {
 						err := outWriter.Write([]string{strconv.FormatUint(packet.GetAddr(), 10), strconv.FormatUint(packet.GetTick(), 10), "w"}) //Writeback
 						if err != nil {
@@ -56,12 +56,19 @@ func simulateSequential(input reader.PBReader, outFile *csv.Writer) *Stats {
 			}
 
 		}
-		if busReq == cachestate.BUS_READ && !foundInOtherCpu {
+		if busReq == cacheset.BUS_READ && !foundInOtherCpu {
 			err := outWriter.Write([]string{strconv.FormatUint(packet.GetAddr(), 10), strconv.FormatUint(packet.GetTick(), 10), "r"})
 			if err != nil {
 				panic(err)
 			}
 		}
+
+		for i := range states {
+			for states[i].GetInUse() > cacheSize {
+				states[i].ApplyStateChange(&StateChange{address: states[i].GetLRU(), newState: cacheset.STATE_INVALID})
+			}
+		}
+
 		packetsProcessed++
 		if packetsProcessed%10000000 == 0 {
 			fmt.Println("Processed:", packetsProcessed, "packets")

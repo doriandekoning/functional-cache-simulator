@@ -1,4 +1,4 @@
-package cachestate
+package cacheset
 
 import (
 	"container/list"
@@ -63,6 +63,16 @@ func (s *State) ApplyStateChange(stateChange CacheStateChange) error {
 
 	return nil
 }
+
+//Retrieve address of LRU
+func (s *State) GetLRU() uint64 {
+	return s.lruList.Back().Value.(uint64)
+}
+
+func (s *State) GetInUse() int {
+	return s.lruList.Len()
+}
+
 
 func (s *State) removeAddress(address uint64) {
 	//Should always be found otherwise panic

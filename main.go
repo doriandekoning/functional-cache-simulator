@@ -7,16 +7,14 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/doriandekoning/functional-cache-simulator/pkg/cachestate"
 	"github.com/doriandekoning/functional-cache-simulator/pkg/reader"
 )
 
 const cacheLineSize = 64 // Cache line size in bytes
-const cacheSize = 8196   // Cache size in lines
+const cacheSize = 1      //131072   // Cache size in lines (8MiB/64 bytes/line)
 
 var debuggingEnabled = false
 var bufferCompleteFile = false
@@ -91,8 +89,6 @@ func main() {
 	fmt.Printf("Using %s simulator\n", simulator)
 	if simulator == "sequential" || simulator == "s" {
 		stats = simulateSequential(inputReaders[0], outWriter)
-	} else if simulator == "batch" || simulator == "b" {
-		// stats = simulateBatch(inputReaders, outWriter)
 	} else if simulator == "concurrent" || simulator == "c" {
 		channelReader, err := reader.NewChanneledPBReader(inputReaders[0])
 		if err != nil {
@@ -114,4 +110,3 @@ func main() {
 	fmt.Println("Memory Reads:", stats.MemoryReads)
 	fmt.Println("-----------------------")
 }
-

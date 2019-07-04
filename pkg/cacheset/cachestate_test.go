@@ -1,4 +1,4 @@
-package cachestate
+package cacheset
 
 import (
 	"testing"
