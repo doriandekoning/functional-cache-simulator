@@ -15,6 +15,7 @@ import (
 
 const cacheLineSize = 64 // Cache line size in bytes
 const cacheSize = 1      //131072   // Cache size in lines (8MiB/64 bytes/line)
+const numCacheSets = 8
 
 var debuggingEnabled = false
 var bufferCompleteFile = false

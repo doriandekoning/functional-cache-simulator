@@ -13,9 +13,12 @@ func simulateSequential(input reader.PBReader, outFile *csv.Writer) *Stats {
 	//TODO cachesets
 
 	//Setup states
-	states := make([]*cacheset.State, numCpus)
+	states := make([][]*cacheset.State, numCpus)
 	for i := range states {
-		states[i] = cacheset.New(cacheSize)
+		states[i] = make([]*cacheset.State, numCacheSets)
+		for j := 0; j < numCacheSets; j++ {
+			states[i][j] = cacheset.New(cacheSize)
+		}
 	}
 	var packetsProcessed uint64
 	for true {
@@ -29,16 +32,16 @@ func simulateSequential(input reader.PBReader, outFile *csv.Writer) *Stats {
 			break
 		}
 		cacheLine := packet.GetAddr() - (packet.GetAddr() % cacheLineSize)
-		currentState := states[packet.GetCpuID()].GetState(cacheLine)
+		currentState := states[packet.GetCpuID()][packet.GetAddr()%numCacheSets].GetState(cacheLine)
 		newState, busReq := cacheset.GetMSIStateChange(currentState, packet.GetCmd() == 1)
-		err = states[packet.GetCpuID()].ApplyStateChange(&StateChange{address: cacheLine, newState: newState})
+		err = states[packet.GetCpuID()][packet.GetAddr()%numCacheSets].ApplyStateChange(&StateChange{address: cacheLine, newState: newState})
 		if err != nil {
 			panic(err)
 		}
 		var foundInOtherCpu bool
 		for i := range states {
 			if uint64(i) != packet.GetCpuID() {
-				oldState := states[i].GetState(cacheLine)
+				oldState := states[i][packet.GetAddr()%numCacheSets].GetState(cacheLine)
 				if oldState != cacheset.STATE_INVALID {
 					foundInOtherCpu = true
 					newState, flush := cacheset.GetMSIStateChangeByBusRequest(oldState, busReq)
@@ -48,7 +51,7 @@ func simulateSequential(input reader.PBReader, outFile *csv.Writer) *Stats {
 							panic(err)
 						}
 					}
-					err := states[i].ApplyStateChange(&StateChange{address: cacheLine, newState: newState})
+					err := states[i][packet.GetAddr()%numCacheSets].ApplyStateChange(&StateChange{address: cacheLine, newState: newState})
 					if err != nil {
 						panic(err)
 					}
@@ -64,8 +67,11 @@ func simulateSequential(input reader.PBReader, outFile *csv.Writer) *Stats {
 		}
 
 		for i := range states {
-			for states[i].GetInUse() > cacheSize {
-				states[i].ApplyStateChange(&StateChange{address: states[i].GetLRU(), newState: cacheset.STATE_INVALID})
+			for states[i][packet.GetAddr()%numCacheSets].GetInUse() > cacheSize {
+				err := states[i][packet.GetAddr()%numCacheSets].ApplyStateChange(&StateChange{address: states[i][packet.GetAddr()%numCacheSets].GetLRU(), newState: cacheset.STATE_INVALID})
+				if err != nil {
+					panic(err)
+				}
 			}
 		}
 
