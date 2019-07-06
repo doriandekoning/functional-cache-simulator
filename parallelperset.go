@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/csv"
 	"fmt"
+	"strconv"
 	"sync"
 
 	"github.com/doriandekoning/functional-cache-simulator/pkg/cacheset"
@@ -26,10 +27,12 @@ func SimulateParallelSet(inChannel chan *messages.Packet, outFile *csv.Writer) *
 		channels[i] = make(chan *messages.Packet, 100)
 	}
 	go SplitChannels(inChannel, channels)
+	outChannel := make(chan []string, 1000)
+	go WriteThread(outChannel)
 	var wg sync.WaitGroup
 	for i := range channels {
 		wg.Add(1)
-		go processAccesses(&wg, channels[i], i, states[i])
+		go processAccesses(&wg, channels[i], i, states[i], outChannel)
 
 	}
 	wg.Wait()
@@ -37,7 +40,7 @@ func SimulateParallelSet(inChannel chan *messages.Packet, outFile *csv.Writer) *
 	return &Stats{}
 }
 
-func processAccesses(wg *sync.WaitGroup, input chan *messages.Packet, cacheSetId int, states []*cacheset.State) {
+func processAccesses(wg *sync.WaitGroup, input chan *messages.Packet, cacheSetId int, states []*cacheset.State, out chan []string) {
 	for true {
 		packet := <-input
 		if packet == nil { //TODO push nil when finished
@@ -60,10 +63,7 @@ func processAccesses(wg *sync.WaitGroup, input chan *messages.Packet, cacheSetId
 					foundInOtherCpu = true
 					newState, flush := cacheset.GetMSIStateChangeByBusRequest(oldState, busReq)
 					if flush {
-						// err := outWriter.Write([]string{strconv.FormatUint(packet.GetAddr(), 10), strconv.FormatUint(packet.GetTick(), 10), "w"}) //Writeback //TODO add out channel
-						// if err != nil {
-						// 	panic(err)
-						// }
+						out <- []string{strconv.FormatUint(packet.GetAddr(), 10), strconv.FormatUint(packet.GetTick(), 10), "w"}
 					}
 					err := states[i].ApplyStateChange(&StateChange{address: cacheLine, newState: newState})
 					if err != nil {
@@ -74,10 +74,7 @@ func processAccesses(wg *sync.WaitGroup, input chan *messages.Packet, cacheSetId
 
 		}
 		if busReq == cacheset.BUS_READ && !foundInOtherCpu {
-			// err := outWriter.Write([]string{strconv.FormatUint(packet.GetAddr(), 10), strconv.FormatUint(packet.GetTick(), 10), "r"})
-			// if err != nil {
-			// 	panic(err)
-			// }
+			out <- []string{strconv.FormatUint(packet.GetAddr(), 10), strconv.FormatUint(packet.GetTick(), 10), "r"}
 		}
 
 		for i := range states {
@@ -100,6 +97,15 @@ func SplitChannels(input chan *messages.Packet, out []chan *messages.Packet) {
 			}
 		} else {
 			out[new.GetAddr()%numCacheSets] <- new
+		}
+	}
+}
+
+func WriteThread(in chan []string) {
+	for {
+		err := outWriter.Write(<-in)
+		if err != nil {
+			panic(err)
 		}
 	}
 }
