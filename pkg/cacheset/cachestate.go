@@ -30,9 +30,10 @@ const (
 	FLUSH       = 4
 )
 
-type CacheStateChange interface {
-	GetNewState() CacheLineState
-	GetAddress() uint64
+type CacheStateChange struct {
+	NewState  CacheLineState
+	Address   uint64
+	Timestamp uint64
 }
 
 type AddressMapEntry struct {
@@ -48,16 +49,16 @@ func New(size int) *State {
 	}
 }
 
-func (s *State) ApplyStateChange(stateChange CacheStateChange) error {
-	if stateChange.GetNewState() == STATE_INVALID {
-		s.removeAddress(stateChange.GetAddress())
+func (s *State) ApplyStateChange(stateChange *CacheStateChange) error {
+	if stateChange.NewState == STATE_INVALID {
+		s.removeAddress(stateChange.Address)
 	} else {
-		entry, contains := s.addressMap[stateChange.GetAddress()]
+		entry, contains := s.addressMap[stateChange.Address]
 		if contains {
 			s.lruList.MoveToBack(entry.listItem)
-			entry.state = stateChange.GetNewState()
+			entry.state = stateChange.NewState
 		} else {
-			s.putAddress(stateChange.GetAddress(), stateChange.GetNewState())
+			s.putAddress(stateChange.Address, stateChange.NewState)
 		}
 	}
 
@@ -72,7 +73,6 @@ func (s *State) GetLRU() uint64 {
 func (s *State) GetInUse() int {
 	return s.lruList.Len()
 }
-
 
 func (s *State) removeAddress(address uint64) {
 	//Should always be found otherwise panic
@@ -146,7 +146,6 @@ func GetMSIStateChange(currentState CacheLineState, write bool) (CacheLineState,
 			return -1, -1
 		}
 	}
-	return -1, -1
 }
 
 func GetMSIStateChangeByBusRequest(currentState CacheLineState, busRequest BusRequest) (newState CacheLineState, flush bool) {

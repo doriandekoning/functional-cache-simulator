@@ -12,28 +12,15 @@ import (
 var cacheSets = 1
 var numCpus = 8
 
-type StateChange struct {
-	newState cacheset.CacheLineState
-	address  uint64
-}
-
-func (s *StateChange) GetNewState() cacheset.CacheLineState {
-	return s.newState
-}
-
-func (s *StateChange) GetAddress() uint64 {
-	return s.address
-}
-
 func SimulateConcurrent(inputChannel chan *messages.Packet, outFile *csv.Writer, numThreads int, batchSize int) *Stats {
 	fmt.Println("Using:", numThreads, "threads")
 
 	//Initialize updateachannels
-	updateChannels := make([][]chan cacheset.CacheStateChange, cacheSets)
+	updateChannels := make([][]chan *cacheset.CacheStateChange, cacheSets)
 	for i := 0; i < cacheSets; i++ {
-		updateChannels[i] = make([]chan cacheset.CacheStateChange, numCpus)
+		updateChannels[i] = make([]chan *cacheset.CacheStateChange, numCpus)
 		for j := 0; j < numCpus; j++ {
-			updateChannels[i][j] = make(chan cacheset.CacheStateChange, 10) //TODO make size dynamic
+			updateChannels[i][j] = make(chan *cacheset.CacheStateChange, 10) //TODO make size dynamic
 		}
 	}
 	//Initialize stateChannels
@@ -69,7 +56,7 @@ func SimulateConcurrent(inputChannel chan *messages.Packet, outFile *csv.Writer,
 }
 
 //Update chans is a map where the first index specifies the cache set and the second the cache
-func accessWorker(input chan *messages.Packet, stateChan chan *[][]cacheset.State, updateChans [][]chan cacheset.CacheStateChange) {
+func accessWorker(input chan *messages.Packet, stateChan chan *[][]cacheset.State, updateChans [][]chan *cacheset.CacheStateChange) {
 	var states *[][]cacheset.State
 	i := 0
 	for true {
@@ -86,20 +73,20 @@ func accessWorker(input chan *messages.Packet, stateChan chan *[][]cacheset.Stat
 				//PrWrI: accessing processor to M others to I
 				//PrWrS: that processor to M others to I
 				for i := range (*states)[cacheSet] {
-					stateChange := StateChange{
-						address:  curAccess.GetAddr(),
-						newState: cacheset.STATE_MODIFIED,
+					stateChange := cacheset.CacheStateChange{
+						Address:  curAccess.GetAddr(),
+						NewState: cacheset.STATE_MODIFIED,
 					}
 					if i == int(curAccess.GetCpuID()) {
-						stateChange.newState = cacheset.STATE_MODIFIED
+						stateChange.NewState = cacheset.STATE_MODIFIED
 					}
 					updateChans[cacheSet][i] <- &stateChange
 				}
 			} else if curState == cacheset.STATE_MODIFIED {
 				//PrWrM: accessing processor to M others stays same
-				stateChange := StateChange{
-					address:  curAccess.GetAddr(),
-					newState: cacheset.STATE_MODIFIED,
+				stateChange := cacheset.CacheStateChange{
+					Address:  curAccess.GetAddr(),
+					NewState: cacheset.STATE_MODIFIED,
 				}
 				updateChans[cacheSet][int(curAccess.GetCpuID())] <- &stateChange
 			} else {
@@ -109,9 +96,9 @@ func accessWorker(input chan *messages.Packet, stateChan chan *[][]cacheset.Stat
 			if curState == cacheset.STATE_INVALID {
 				//PrRdI: accessing processor to S others to S
 				for i := range (*states)[cacheSet] {
-					stateChange := StateChange{
-						address:  curAccess.GetAddr(),
-						newState: cacheset.STATE_SHARED,
+					stateChange := cacheset.CacheStateChange{
+						Address:  curAccess.GetAddr(),
+						NewState: cacheset.STATE_SHARED,
 					}
 					updateChans[cacheSet][i] <- &stateChange
 				}
@@ -126,7 +113,7 @@ func accessWorker(input chan *messages.Packet, stateChan chan *[][]cacheset.Stat
 	}
 }
 
-func stateUpdateWorker(in chan cacheset.CacheStateChange, newState cacheset.State, retChannel chan *cacheset.State) { //TODO refactor in and out to channels
+func stateUpdateWorker(in chan *cacheset.CacheStateChange, newState cacheset.State, retChannel chan *cacheset.State) { //TODO refactor in and out to channels
 	for i := 0; i < 100; i++ {
 		<-in
 		newState.ApplyStateChange(<-in)
@@ -135,5 +122,6 @@ func stateUpdateWorker(in chan cacheset.CacheStateChange, newState cacheset.Stat
 }
 
 func determineCacheSet(address uint64) int {
+	fmt.Println(int(address), cacheSets, int(address)%cacheSets)
 	return int(address) % cacheSets //TODO realistic mapping
 }

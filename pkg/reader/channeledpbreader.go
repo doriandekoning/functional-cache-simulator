@@ -12,7 +12,7 @@ type ChanneledPBReader struct {
 }
 
 func NewChanneledPBReader(inputReader PBReader) (*ChanneledPBReader, error) {
-	packetChannel := make(chan *messages.Packet, 1000) //TODO make channel size configurable
+	packetChannel := make(chan *messages.Packet, 100000) //TODO make channel size configurable
 	channeledReader := &ChanneledPBReader{channel: packetChannel}
 
 	channeledReader.reader = inputReader

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/doriandekoning/functional-cache-simulator/pkg/reader"
+	"github.com/pkg/profile"
 )
 
 const cacheLineSize = 64 // Cache line size in bytes
@@ -95,6 +96,8 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
+		defer profile.Start().Stop()
+
 		stats = SimulateParallelSet(channelReader.GetChannel(), outWriter)
 	} else if simulator == "concurrent" || simulator == "c" {
 		channelReader, err := reader.NewChanneledPBReader(inputReaders[0])

@@ -5,16 +5,13 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/doriandekoning/functional-cache-simulator/pkg/cacheset"
 	"github.com/doriandekoning/functional-cache-simulator/pkg/messages"
 )
 
-var startTime time.Time
+func SetsBatch(inChannel chan *messages.Packet, outFile *csv.Writer, batchSize int) *Stats {
 
-func SimulateParallelSet(inChannel chan *messages.Packet, outFile *csv.Writer) *Stats {
-	startTime = time.Now()
 	//Setup states
 	states := make([][]*cacheset.State, numCacheSets)
 	for i := range states {
@@ -26,7 +23,7 @@ func SimulateParallelSet(inChannel chan *messages.Packet, outFile *csv.Writer) *
 	//Setup channels
 	channels := make([]chan *messages.Packet, numCacheSets)
 	for i := range channels {
-		channels[i] = make(chan *messages.Packet, 10000)
+		channels[i] = make(chan *messages.Packet, 100)
 	}
 	go SplitChannels(inChannel, channels)
 	outChannel := make(chan []string, 1000)
@@ -34,7 +31,7 @@ func SimulateParallelSet(inChannel chan *messages.Packet, outFile *csv.Writer) *
 	var wg sync.WaitGroup
 	for i := range channels {
 		wg.Add(1)
-		go processAccesses(&wg, channels[i], i, states[i], outChannel)
+		go processAccessesBatch(&wg, channels[i], i, states[i], outChannel)
 
 	}
 	wg.Wait()
@@ -42,11 +39,12 @@ func SimulateParallelSet(inChannel chan *messages.Packet, outFile *csv.Writer) *
 	return &Stats{}
 }
 
-func processAccesses(wg *sync.WaitGroup, input chan *messages.Packet, cacheSetId int, states []*cacheset.State, out chan []string) {
+func processAccessesBatch(wg *sync.WaitGroup, input chan *messages.Packet, cacheSetId int, states []*cacheset.State, out chan []string) {
+	// changeChannels := make([]chan *cacheset.CacheStateChange, 2*batchSize)
 	for true {
 		packet := <-input
 		if packet == nil {
-			fmt.Println("Finished", startTime.Sub(time.Now()))
+			fmt.Println("Finished")
 			wg.Done()
 			break
 		}
@@ -86,28 +84,6 @@ func processAccesses(wg *sync.WaitGroup, input chan *messages.Packet, cacheSetId
 					panic(err)
 				}
 			}
-		}
-	}
-}
-
-func SplitChannels(input chan *messages.Packet, out []chan *messages.Packet) {
-	for true {
-		new := <-input
-		if new == nil {
-			for i := range out {
-				out[i] <- nil
-			}
-		} else {
-			out[(new.GetAddr()/cacheLineSize)%numCacheSets] <- new
-		}
-	}
-}
-
-func WriteThread(in chan []string) {
-	for {
-		err := outWriter.Write(<-in)
-		if err != nil {
-			panic(err)
 		}
 	}
 }
