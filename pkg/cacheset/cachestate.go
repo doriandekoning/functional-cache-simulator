@@ -5,11 +5,15 @@ import (
 	"fmt"
 )
 
+type CacheEntry struct {
+	address uint64
+	state   CacheLineState
+}
+
 //State represents the state of a single lru MSI cache
 type State struct {
-	lruList    *list.List
-	addressMap map[uint64]*AddressMapEntry
-	size       int
+	lruList *list.List
+	size    int
 }
 
 type CacheLineState int
@@ -36,16 +40,10 @@ type CacheStateChange struct {
 	Timestamp uint64
 }
 
-type AddressMapEntry struct {
-	listItem *list.Element
-	state    CacheLineState
-}
-
 func New(size int) *State {
 	return &State{
-		lruList:    list.New(), //TODO see if we can get rid of this list
-		addressMap: make(map[uint64]*AddressMapEntry),
-		size:       size,
+		lruList: list.New(),
+		size:    size,
 	}
 }
 
@@ -53,10 +51,10 @@ func (s *State) ApplyStateChange(stateChange *CacheStateChange) error {
 	if stateChange.NewState == STATE_INVALID {
 		s.removeAddress(stateChange.Address)
 	} else {
-		entry, contains := s.addressMap[stateChange.Address]
-		if contains {
-			s.lruList.MoveToBack(entry.listItem)
-			entry.state = stateChange.NewState
+		entry := s.GetListItem(stateChange.Address)
+		if entry != nil {
+			s.lruList.MoveToBack(entry)
+			entry.Value.(*CacheEntry).state = stateChange.NewState
 		} else {
 			s.putAddress(stateChange.Address, stateChange.NewState)
 		}
@@ -67,7 +65,7 @@ func (s *State) ApplyStateChange(stateChange *CacheStateChange) error {
 
 //Retrieve address of LRU
 func (s *State) GetLRU() uint64 {
-	return s.lruList.Back().Value.(uint64)
+	return s.lruList.Back().Value.(CacheEntry).address
 }
 
 func (s *State) GetInUse() int {
@@ -76,46 +74,34 @@ func (s *State) GetInUse() int {
 
 func (s *State) removeAddress(address uint64) {
 	//Should always be found otherwise panic
-	entry, found := s.addressMap[address]
-	if !found {
-		fmt.Errorf("Trying to remove entry which is not in the map")
+	li := s.GetListItem(address)
+	if li == nil {
+		panic("Trying to remove entry which is not in the cache")
 	}
-	s.lruList.Remove(entry.listItem)
-	delete(s.addressMap, address)
+	s.lruList.Remove(li)
 }
 
 func (s *State) putAddress(address uint64, state CacheLineState) {
-	listItem := s.lruList.PushFront(address)
-	s.addressMap[address] = &AddressMapEntry{listItem: listItem, state: state}
+	s.lruList.PushFront(&CacheEntry{address: address, state: state})
 }
 
 func (s *State) GetState(address uint64) CacheLineState {
-	item, contains := s.addressMap[address]
-	if !contains {
+	entry := s.GetListItem(address)
+	if entry == nil {
 		return STATE_INVALID
 	}
-	return item.state
+	return entry.Value.(*CacheEntry).state
 }
 
-func (s *State) Contains(address uint64) bool {
-	_, contains := s.addressMap[address]
-	return contains
-}
-
-func (s *State) Copy() State {
-	newList := list.New()
-	newMap := make(map[uint64]*AddressMapEntry)
+func (s *State) GetListItem(address uint64) *list.Element {
 	nextItem := s.lruList.Front()
 	for nextItem != nil {
-		newListItem := newList.PushBack(nextItem.Value)
-		newMap[nextItem.Value.(uint64)] = &AddressMapEntry{
-			listItem: newListItem,
-			state:    s.GetState(nextItem.Value.(uint64)),
+		if nextItem.Value.(*CacheEntry).address == address {
+			return nextItem
 		}
 		nextItem = nextItem.Next()
 	}
-	return State{lruList: newList, size: s.size, addressMap: newMap}
-
+	return nil
 }
 
 func GetMSIStateChange(currentState CacheLineState, write bool) (CacheLineState, BusRequest) {

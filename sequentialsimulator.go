@@ -10,14 +10,13 @@ import (
 )
 
 func simulateSequential(input reader.PBReader, outFile *csv.Writer) *Stats {
-	//TODO cachesets
-
+	amountOfCacheSets := cacheSize / associativity
 	//Setup states
-	states := make([][]*cacheset.State, numCpus)
-	for i := range states {
-		states[i] = make([]*cacheset.State, numCacheSets)
-		for j := 0; j < numCacheSets; j++ {
-			states[i][j] = cacheset.New(cacheSize)
+	cacheSets := make([][]*cacheset.State, amountOfCacheSets)
+	for i := range cacheSets {
+		cacheSets[i] = make([]*cacheset.State, numCpus)
+		for j := range cacheSets[i] {
+			cacheSets[i][j] = cacheset.New(cacheSize)
 		}
 	}
 	var packetsProcessed uint64
@@ -31,21 +30,19 @@ func simulateSequential(input reader.PBReader, outFile *csv.Writer) *Stats {
 		} else if packet == nil {
 			break
 		}
-		if ((int(packet.GetAddr()) / cacheLineSize) % numCacheSets) != 1 {
-			continue
-		}
-
-		cacheLine := packet.GetAddr() - (packet.GetAddr() % cacheLineSize)
-		currentState := states[packet.GetCpuID()][getCacheSetNumber(packet.GetAddr())].GetState(cacheLine)
+		// ( ... >> 6) strips the 64 bits indicating the offset within the cache line
+		cacheLine := packet.GetAddr() >> 6
+		cacheSetNumber := getCacheSetNumber(cacheLine)
+		currentState := cacheSets[cacheSetNumber][packet.GetCpuID()].GetState(cacheLine)
 		newState, busReq := cacheset.GetMSIStateChange(currentState, packet.GetCmd() == 1)
-		err = states[packet.GetCpuID()][getCacheSetNumber(packet.GetAddr())].ApplyStateChange(&cacheset.CacheStateChange{Address: cacheLine, NewState: newState})
+		err = cacheSets[cacheSetNumber][packet.GetCpuID()].ApplyStateChange(&cacheset.CacheStateChange{Address: cacheLine, NewState: newState})
 		if err != nil {
 			panic(err)
 		}
 		var foundInOtherCpu bool
-		for i := range states {
+		for i := range cacheSets[cacheSetNumber] {
 			if uint64(i) != packet.GetCpuID() {
-				oldState := states[i][getCacheSetNumber(packet.GetAddr())].GetState(cacheLine)
+				oldState := cacheSets[cacheSetNumber][i].GetState(cacheLine)
 				if oldState != cacheset.STATE_INVALID {
 					foundInOtherCpu = true
 					newState, flush := cacheset.GetMSIStateChangeByBusRequest(oldState, busReq)
@@ -55,7 +52,7 @@ func simulateSequential(input reader.PBReader, outFile *csv.Writer) *Stats {
 							panic(err)
 						}
 					}
-					err := states[i][getCacheSetNumber(packet.GetAddr())].ApplyStateChange(&cacheset.CacheStateChange{Address: cacheLine, NewState: newState})
+					err := cacheSets[cacheSetNumber][i].ApplyStateChange(&cacheset.CacheStateChange{Address: cacheLine, NewState: newState})
 					if err != nil {
 						panic(err)
 					}
@@ -70,9 +67,9 @@ func simulateSequential(input reader.PBReader, outFile *csv.Writer) *Stats {
 			}
 		}
 
-		for i := range states {
-			for states[i][getCacheSetNumber(packet.GetAddr())].GetInUse() > cacheSize {
-				err := states[i][getCacheSetNumber(packet.GetAddr())].ApplyStateChange(&cacheset.CacheStateChange{Address: states[i][getCacheSetNumber(packet.GetAddr())].GetLRU(), NewState: cacheset.STATE_INVALID})
+		for i := range cacheSets[cacheSetNumber] {
+			for cacheSets[cacheSetNumber][i].GetInUse() > cacheSize {
+				err := cacheSets[cacheSetNumber][i].ApplyStateChange(&cacheset.CacheStateChange{Address: cacheSets[cacheSetNumber][i].GetLRU(), NewState: cacheset.STATE_INVALID}) //TODO writeback upon evict if not in other caches (only if in M)
 				if err != nil {
 					panic(err)
 				}
@@ -80,7 +77,7 @@ func simulateSequential(input reader.PBReader, outFile *csv.Writer) *Stats {
 		}
 
 		packetsProcessed++
-		if packetsProcessed%10000000 == 0 {
+		if packetsProcessed%500000 == 0 {
 			fmt.Println("Processed:", packetsProcessed, "packets")
 		}
 
@@ -89,6 +86,7 @@ func simulateSequential(input reader.PBReader, outFile *csv.Writer) *Stats {
 	return &Stats{}
 }
 
-func getCacheSetNumber(address uint64) int {
-	return (int(address) / cacheLineSize) % numCacheSets
+func getCacheSetNumber(cacheLine uint64) int {
+	// (2<<16) = cachesize in lines
+	return int(cacheLine % (2 << 13))
 }

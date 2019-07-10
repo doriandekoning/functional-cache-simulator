@@ -14,6 +14,11 @@ import (
 
 const fileHeader = "gem5"
 
+var addressMap map[uint64]uint64
+var freePhysAddr = uint64(0)
+
+const pageSize = uint64(4096)
+
 type BufferedPBReader struct {
 	reader     bufio.Reader
 	nextPacket *messages.Packet
@@ -44,6 +49,7 @@ func NewBufferedPBReader(path string) (*BufferedPBReader, error) {
 		return nil, err
 	}
 	reader.nextPacket = packet
+	addressMap = make(map[uint64]uint64)
 
 	return reader, nil
 }
@@ -110,7 +116,21 @@ func (b *BufferedPBReader) ReadPacket() (*messages.Packet, error) {
 	retPacket := b.nextPacket
 	b.nextPacket = packet
 
+	addr := toPhysicalAddress(packet.GetAddr())
+	retPacket.Addr = &addr
 	return retPacket, nil
+}
+
+func toPhysicalAddress(address uint64) uint64 {
+	page := (address >> 12)
+	physAddr, found := addressMap[page]
+	if found {
+		return physAddr + (address % pageSize)
+	}
+	physAddr = freePhysAddr + (address % pageSize)
+	freePhysAddr += pageSize
+	addressMap[page] = physAddr
+	return physAddr
 }
 
 func (b *BufferedPBReader) GetHeader() *messages.PacketHeader {

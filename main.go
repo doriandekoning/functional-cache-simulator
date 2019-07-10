@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/doriandekoning/functional-cache-simulator/pkg/reader"
-	"github.com/pkg/profile"
 )
 
-const cacheLineSize = 64 // Cache line size in bytes
-const cacheSize = 131072 // Cache size in lines (8MiB/64 bytes/line)
-const numCacheSets = 8
+const cacheLineSize = 64                       // Cache line size in bytes
+const cacheSize = 8388608                       // Cache size in lines (8MiB/64 bytes/line)
+const numCacheSets = cacheSize / associativity //TODO remove outdated
+const associativity = 8
 
 var debuggingEnabled = false
 var bufferCompleteFile = false
@@ -96,9 +96,8 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		defer profile.Start().Stop()
 
-		stats = SimulateParallelSet(channelReader.GetChannel(), outWriter)
+		stats = simulateParallel(channelReader.GetChannel(), outWriter)
 	} else if simulator == "concurrent" || simulator == "c" {
 		channelReader, err := reader.NewChanneledPBReader(inputReaders[0])
 		if err != nil {

@@ -5,69 +5,91 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/doriandekoning/functional-cache-simulator/pkg/cacheset"
 	"github.com/doriandekoning/functional-cache-simulator/pkg/messages"
 )
 
-var startTime time.Time
+const maxThreads = 8 // Should divide cachesize
+const channelSize = 10000
+const outChannelSize = 100
 
-func SimulateParallelSet(inChannel chan *messages.Packet, outFile *csv.Writer) *Stats {
-	startTime = time.Now()
+func simulateParallel(input chan *messages.Packet, outFile *csv.Writer) *Stats {
 	//Setup states
-	states := make([][]*cacheset.State, numCacheSets)
-	for i := range states {
-		states[i] = make([]*cacheset.State, numCpus)
-		for j := 0; j < numCacheSets; j++ {
-			states[i][j] = cacheset.New(cacheSize)
+	cacheSets := make([][]*cacheset.State, numCacheSets)
+	for i := range cacheSets {
+		cacheSets[i] = make([]*cacheset.State, numCpus)
+		for j := range cacheSets[i] {
+			cacheSets[i][j] = cacheset.New(cacheSize)
 		}
 	}
-	//Setup channels
-	channels := make([]chan *messages.Packet, numCacheSets)
-	for i := range channels {
-		channels[i] = make(chan *messages.Packet, 10000)
-	}
-	go SplitChannels(inChannel, channels)
-	outChannel := make(chan []string, 1000)
-	go WriteThread(outChannel)
-	var wg sync.WaitGroup
-	for i := range channels {
-		wg.Add(1)
-		go processAccesses(&wg, channels[i], i, states[i], outChannel)
 
+	var waitgroup sync.WaitGroup
+	//Setup channels
+	packetChannels := make([]chan *messages.Packet, maxThreads)
+	outChannel := make(chan *[]string, outChannelSize)
+	go Writer(outChannel)
+
+	waitgroup.Add(len(packetChannels))
+	for i := range packetChannels {
+		packetChannels[i] = make(chan *messages.Packet, channelSize)
+		go processPackets(packetChannels[i], cacheSets, outChannel, &waitgroup)
 	}
-	wg.Wait()
+
+	var packetsProcessed uint64
+	go func() {
+		for true {
+			packet := <-input
+			if packet == nil {
+				fmt.Println("Finished")
+				for i := range packetChannels {
+					packetChannels[i] <- nil
+				}
+				break
+			}
+			cacheSet := getCacheSetNumber(packet.GetAddr() >> 6)
+			packetChannels[cacheSet%maxThreads] <- packet
+			packetsProcessed++
+			if packetsProcessed%500000 == 0 {
+				fmt.Println("Processed:", packetsProcessed, "packets")
+			}
+		}
+	}()
+	waitgroup.Wait()
 	outWriter.Flush()
 	return &Stats{}
 }
 
-func processAccesses(wg *sync.WaitGroup, input chan *messages.Packet, cacheSetId int, states []*cacheset.State, out chan []string) {
+func processPackets(input chan *messages.Packet, cacheSets [][]*cacheset.State, outChannel chan *[]string, wg *sync.WaitGroup) {
+	var totalPackets int
 	for true {
 		packet := <-input
 		if packet == nil {
-			fmt.Println("Finished", startTime.Sub(time.Now()))
+			fmt.Println("totalPackets", totalPackets)
 			wg.Done()
-			break
+			return
 		}
-		cacheLine := packet.GetAddr() - (packet.GetAddr() % cacheLineSize)
-		currentState := states[packet.GetCpuID()].GetState(cacheLine)
+		totalPackets++
+		// ( ... >> 6) strips the 64 bits indicating the offset within the cache line
+		cacheLine := packet.GetAddr() >> 6
+		cacheSetNumber := getCacheSetNumber(cacheLine)
+		currentState := cacheSets[cacheSetNumber][packet.GetCpuID()].GetState(cacheLine)
 		newState, busReq := cacheset.GetMSIStateChange(currentState, packet.GetCmd() == 1)
-		err := states[packet.GetCpuID()].ApplyStateChange(&cacheset.CacheStateChange{Address: cacheLine, NewState: newState, Timestamp: packet.GetTick()})
+		err := cacheSets[cacheSetNumber][packet.GetCpuID()].ApplyStateChange(&cacheset.CacheStateChange{Address: cacheLine, NewState: newState})
 		if err != nil {
 			panic(err)
 		}
 		var foundInOtherCpu bool
-		for i := range states {
+		for i := range cacheSets[cacheSetNumber] {
 			if uint64(i) != packet.GetCpuID() {
-				oldState := states[i].GetState(cacheLine)
+				oldState := cacheSets[cacheSetNumber][i].GetState(cacheLine)
 				if oldState != cacheset.STATE_INVALID {
 					foundInOtherCpu = true
 					newState, flush := cacheset.GetMSIStateChangeByBusRequest(oldState, busReq)
 					if flush {
-						out <- []string{strconv.FormatUint(packet.GetAddr(), 10), strconv.FormatUint(packet.GetTick(), 10), "w"}
+						outChannel <- &[]string{strconv.FormatUint(packet.GetAddr(), 10), strconv.FormatUint(packet.GetTick(), 10), "w"}
 					}
-					err := states[i].ApplyStateChange(&cacheset.CacheStateChange{Address: cacheLine, NewState: newState, Timestamp: packet.GetTick()})
+					err := cacheSets[cacheSetNumber][i].ApplyStateChange(&cacheset.CacheStateChange{Address: cacheLine, NewState: newState})
 					if err != nil {
 						panic(err)
 					}
@@ -76,12 +98,12 @@ func processAccesses(wg *sync.WaitGroup, input chan *messages.Packet, cacheSetId
 
 		}
 		if busReq == cacheset.BUS_READ && !foundInOtherCpu {
-			out <- []string{strconv.FormatUint(packet.GetAddr(), 10), strconv.FormatUint(packet.GetTick(), 10), "r"}
+			outChannel <- &[]string{strconv.FormatUint(packet.GetAddr(), 10), strconv.FormatUint(packet.GetTick(), 10), "r"}
 		}
 
-		for i := range states {
-			for states[i].GetInUse() > cacheSize {
-				err := states[i].ApplyStateChange(&cacheset.CacheStateChange{Address: states[i].GetLRU(), NewState: cacheset.STATE_INVALID, Timestamp: packet.GetTick()})
+		for i := range cacheSets[cacheSetNumber] {
+			for cacheSets[cacheSetNumber][i].GetInUse() > cacheSize {
+				err := cacheSets[cacheSetNumber][i].ApplyStateChange(&cacheset.CacheStateChange{Address: cacheSets[cacheSetNumber][i].GetLRU(), NewState: cacheset.STATE_INVALID}) //TODO writeback upon evict if not in other caches (only if in M)
 				if err != nil {
 					panic(err)
 				}
@@ -90,24 +112,12 @@ func processAccesses(wg *sync.WaitGroup, input chan *messages.Packet, cacheSetId
 	}
 }
 
-func SplitChannels(input chan *messages.Packet, out []chan *messages.Packet) {
+func Writer(msgChan chan *[]string) {
 	for true {
-		new := <-input
-		if new == nil {
-			for i := range out {
-				out[i] <- nil
-			}
-		} else {
-			out[(new.GetAddr()/cacheLineSize)%numCacheSets] <- new
-		}
-	}
-}
-
-func WriteThread(in chan []string) {
-	for {
-		err := outWriter.Write(<-in)
+		msg := <-msgChan
+		err := outWriter.Write(*msg)
 		if err != nil {
-			panic(err)
+			// fmt.Println("Error writing:", err)
 		}
 	}
 }

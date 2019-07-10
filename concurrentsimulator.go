@@ -40,7 +40,7 @@ func SimulateConcurrent(inputChannel chan *messages.Packet, outFile *csv.Writer,
 			for j := 0; j < numCpus; j++ {
 				states[i][j] = *cacheset.New(100)
 				retChannel := make(chan *cacheset.State)
-				stateUpdateWorker(updateChannels[i][j], states[i][j].Copy(), retChannel)
+				// stateUpdateWorker(updateChannels[i][j], states[i][j].Copy(), retChannel)
 				states[i][j] = *<-retChannel
 			}
 		}
