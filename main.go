@@ -14,7 +14,7 @@ import (
 )
 
 const cacheLineSize = 64                       // Cache line size in bytes
-const cacheSize = 8388608                       // Cache size in lines (8MiB/64 bytes/line)
+const cacheSize = 8388608                      // Cache size in lines (8MiB/64 bytes/line)
 const numCacheSets = cacheSize / associativity //TODO remove outdated
 const associativity = 8
 
@@ -23,6 +23,7 @@ var bufferCompleteFile = false
 var simulator = ""
 var batchSize = 1
 var outWriter *csv.Writer
+var threads *int
 
 type Stats struct {
 	MemoryReads      uint64
@@ -37,8 +38,8 @@ type Stats struct {
 func main() {
 	inputFiles := flag.String("inputs", "", "Input trace file to analyse")
 	outputFileLoc := flag.String("output", "", "Output")
-	numThreads := flag.Int("threads", 1, "Specify the amount of threads to use for concurrents simulation")
 	maxBuffer := flag.Int("maxbuffer", -1, "The amount of accesses the memreader reads into memory")
+	threads = flag.Int("maxthreads", 1, "The maximum amount of threads to use in parallel simulation")
 	flag.BoolVar(&debuggingEnabled, "debug", false, "If set to true additional debugging info will be logged")
 	flag.StringVar(&simulator, "simulator", "sequential", "Selects the simulator to use, options are: sequential(s), batch(b) or concurrent(c)")
 	flag.BoolVar(&bufferCompleteFile, "buffer-complete-file", false, "If set to true the complete file is read into memory before simulating")
@@ -98,12 +99,6 @@ func main() {
 		}
 
 		stats = simulateParallel(channelReader.GetChannel(), outWriter)
-	} else if simulator == "concurrent" || simulator == "c" {
-		channelReader, err := reader.NewChanneledPBReader(inputReaders[0])
-		if err != nil {
-			panic(err)
-		}
-		stats = SimulateConcurrent(channelReader.GetChannel(), outWriter, *numThreads, batchSize)
 	} else {
 		fmt.Printf("Simulator type %s not known", simulator)
 		return

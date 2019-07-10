@@ -10,7 +10,6 @@ import (
 	"github.com/doriandekoning/functional-cache-simulator/pkg/messages"
 )
 
-const maxThreads = 8 // Should divide cachesize
 const channelSize = 10000
 const outChannelSize = 100
 
@@ -26,7 +25,7 @@ func simulateParallel(input chan *messages.Packet, outFile *csv.Writer) *Stats {
 
 	var waitgroup sync.WaitGroup
 	//Setup channels
-	packetChannels := make([]chan *messages.Packet, maxThreads)
+	packetChannels := make([]chan *messages.Packet, *threads)
 	outChannel := make(chan *[]string, outChannelSize)
 	go Writer(outChannel)
 
@@ -48,7 +47,7 @@ func simulateParallel(input chan *messages.Packet, outFile *csv.Writer) *Stats {
 				break
 			}
 			cacheSet := getCacheSetNumber(packet.GetAddr() >> 6)
-			packetChannels[cacheSet%maxThreads] <- packet
+			packetChannels[cacheSet%*threads] <- packet
 			packetsProcessed++
 			if packetsProcessed%500000 == 0 {
 				fmt.Println("Processed:", packetsProcessed, "packets")

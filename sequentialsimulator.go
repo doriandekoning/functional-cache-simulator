@@ -9,6 +9,8 @@ import (
 	"github.com/doriandekoning/functional-cache-simulator/pkg/reader"
 )
 
+var numCpus = 8
+
 func simulateSequential(input reader.PBReader, outFile *csv.Writer) *Stats {
 	amountOfCacheSets := cacheSize / associativity
 	//Setup states
