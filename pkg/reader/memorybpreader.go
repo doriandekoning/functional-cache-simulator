@@ -14,7 +14,7 @@ type MemoryPbReader struct {
 	packets *list.List
 }
 
-func NewMemoryPBReader(path string, maxPackets int) (*MemoryPbReader, error) {
+func NewMemoryPBReader(path string, maxPackets uint64) (*MemoryPbReader, error) {
 	packets, header, err := readCompleteFile(path, maxPackets)
 	if err != nil {
 		return nil, err
@@ -42,13 +42,13 @@ func (r *MemoryPbReader) NextTick() uint64 {
 	return *front.Value.(*messages.Packet).Tick
 }
 
-func readCompleteFile(path string, max int) (*list.List, *messages.PacketHeader, error) {
+func readCompleteFile(path string, max uint64) (*list.List, *messages.PacketHeader, error) {
 	packets := list.New()
 	bufReader, err := NewBufferedPBReader(path)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "Error while creating new PBReader")
 	}
-	i := 0
+	i := uint64(0)
 	for true {
 		nextPacket, err := bufReader.ReadPacket()
 		if err == io.EOF {

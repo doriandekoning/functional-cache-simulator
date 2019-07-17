@@ -39,7 +39,7 @@ func simulateParallel(input chan *messages.Packet, outFile *csv.Writer) *Stats {
 	go func() {
 		for true {
 			packet := <-input
-			if packet == nil {
+			if packet == nil || packetsProcessed > *maxAccesses {
 				fmt.Println("Finished")
 				for i := range packetChannels {
 					packetChannels[i] <- nil
@@ -102,7 +102,12 @@ func processPackets(input chan *messages.Packet, cacheSets [][]*cacheset.State, 
 
 		for i := range cacheSets[cacheSetNumber] {
 			for cacheSets[cacheSetNumber][i].GetInUse() > cacheSize {
-				err := cacheSets[cacheSetNumber][i].ApplyStateChange(&cacheset.CacheStateChange{Address: cacheSets[cacheSetNumber][i].GetLRU(), NewState: cacheset.STATE_INVALID}) //TODO writeback upon evict if not in other caches (only if in M)
+				lru := cacheSets[cacheSetNumber][i].GetLRU()
+				if cacheSets[cacheSetNumber][i].GetState(lru) == cacheset.STATE_MODIFIED {
+					outChannel <- &[]string{strconv.FormatUint(lru, 10), strconv.FormatUint(packet.GetTick(), 10), "w"}
+				}
+				err := cacheSets[cacheSetNumber][i].ApplyStateChange(&cacheset.CacheStateChange{Address: lru, NewState: cacheset.STATE_INVALID}) //TODO writeback upon evict if not in other caches (only if in M)
+
 				if err != nil {
 					panic(err)
 				}
@@ -116,7 +121,7 @@ func Writer(msgChan chan *[]string) {
 		msg := <-msgChan
 		err := outWriter.Write(*msg)
 		if err != nil {
-			// fmt.Println("Error writing:", err)
+			fmt.Println("Error writing:", err)
 		}
 	}
 }

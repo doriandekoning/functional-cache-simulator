@@ -25,6 +25,7 @@ var simulator = ""
 var batchSize = 1
 var outWriter *csv.Writer
 var threads *int
+var maxAccesses *uint64
 
 type Stats struct {
 	MemoryReads      uint64
@@ -39,7 +40,7 @@ type Stats struct {
 func main() {
 	inputFiles := flag.String("inputs", "", "Input trace file to analyse")
 	outputFileLoc := flag.String("output", "", "Output")
-	maxBuffer := flag.Int("maxbuffer", -1, "The amount of accesses the memreader reads into memory")
+	maxAccesses = flag.Uint64("maxaccesses", 1000000, "The amount of accesses the memreader reads into memory")
 	threads = flag.Int("maxthreads", 1, "The maximum amount of threads to use in parallel simulation")
 	flag.BoolVar(&debuggingEnabled, "debug", false, "If set to true additional debugging info will be logged")
 	flag.StringVar(&simulator, "simulator", "sequential", "Selects the simulator to use, options are: sequential(s), batch(b) or concurrent(c)")
@@ -69,7 +70,7 @@ func main() {
 			}
 
 		} else {
-			in, err = reader.NewMemoryPBReader(inputF, *maxBuffer)
+			in, err = reader.NewMemoryPBReader(inputF, *maxAccesses)
 		}
 		if err != nil {
 			panic(err)
