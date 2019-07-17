@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -45,6 +46,9 @@ func main() {
 	flag.BoolVar(&bufferCompleteFile, "buffer-complete-file", false, "If set to true the complete file is read into memory before simulating")
 	flag.IntVar(&batchSize, "batchsize", 1, "Sets the batchsize, a larger value is faster but less accurate, a batch size of 1 results in the exact result")
 	flag.Parse()
+	fmt.Println("Previous max procs:", runtime.GOMAXPROCS(*threads))
+
+	fmt.Println(runtime.NumCPU())
 
 	if inputFiles == nil {
 		panic("No input file provided")
