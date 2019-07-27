@@ -3,14 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-
-
-#define CACHE_LINE_SIZE 64
-#define CACHE_SIZE 8388608 // The size of the simulated cache (in 64byte lines)
-#define ASSOCIATIVITY 8
-#define AMOUNT_CACHE_SETS (CACHE_SIZE / ASSOCIATIVITY)
-#define AMOUNT_SIMULATED_PROCESSORS 8
-
+#include "config.h"
 
 
 extern const int STATE_INVALID;
@@ -36,6 +29,13 @@ struct statechange {
 	int bus_request;
 };
 
+typedef struct access_s {
+	uint64_t address;
+	uint64_t tick;
+	uint64_t cpu;
+	bool write;
+} access;
+
 
 typedef struct CacheEntry* CacheEntryState;
 typedef struct CacheEntry* CacheSetState;
@@ -54,7 +54,7 @@ CacheSetState apply_state_change(CacheSetState cacheSetState, struct CacheEntry*
 // Functions on a cachelinestate
 void remove_item(struct CacheEntry* entry);
 CacheSetState append_item(CacheSetState list, struct CacheEntry* newEntry);
-void move_item_back(struct CacheEntry* entry); 
+void move_item_back(struct CacheEntry* entry);
 int list_length(CacheSetState list);
 struct CacheEntry* get_head(struct CacheEntry* list);
 
