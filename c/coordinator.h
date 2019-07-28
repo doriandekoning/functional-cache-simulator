@@ -3,6 +3,6 @@
 
 #include <mpi.h>
 
-int run_coordinator(int world_size, MPI_Datatype* mpi_access_type);
+int run_coordinator(int world_size);
 
 #endif /* COORDINATOR_H */

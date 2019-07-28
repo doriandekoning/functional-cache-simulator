@@ -128,10 +128,15 @@ CacheSetState apply_state_change(CacheSetState cacheLineState, struct CacheEntry
 	} else {
 		// Add new entry to cache and evict oldest one if more than 8
 		struct CacheEntry* new = calloc(1, sizeof(struct CacheEntry));
+		if(new == NULL) {
+			printf("Could not allocate new cacheentry\n");
+			exit(1);
+		}
 		new->address = cache_line;
 		new->state = statechange.new_state;
 
 		cacheLineState = append_item(cacheLineState, new);
+		get_head(cacheLineState);
 	}
 	return get_head(cacheLineState); //TODO optimize
 }
@@ -168,7 +173,7 @@ void move_item_back(struct CacheEntry* entry) {
 	if(end != entry) {
 		if(entry->prev != NULL) {
 			entry->prev->next = entry->next;
-		}	
+		}
 		if(entry->next != NULL) {
 			entry->next->prev = entry->prev;
 		}
