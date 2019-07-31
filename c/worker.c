@@ -44,74 +44,81 @@ int run_worker(int amount_workers) {
         printf("Cannot allocate memory for states\n");
         return 0;
     }
-	access* msg = malloc(sizeof(access));
-	int total_accesses;
+	access* messages = malloc(MESSAGE_BATCH_SIZE * sizeof(access));
+	uint32_t total_accesses = 0;
+	uint32_t total_batches = 0;
+	bool last_batch = false;
 	do{
 		MPI_Status status;//. = malloc(sizeof(MPI_Status));
 		int result;
 		MPI_Probe(0, 0, MPI_COMM_WORLD, &status);
 		int count;
 		MPI_Get_count(&status, mpi_access_type, &count);
-
 		if (count < MESSAGE_BATCH_SIZE) {
-			printf("Finished\n");
-			break;
+			printf("Finished with %d messages left\n", count);
+			last_batch = true;
 		} else if(count > MESSAGE_BATCH_SIZE) {
             printf("Received more than MESSAGE_BATCH_SIZE messages: %d\n", count);
+			exit(1);
         }
 
-		int success = MPI_Recv(msg, count, mpi_access_type, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		int success = MPI_Recv(messages, count, mpi_access_type, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         if(success != MPI_SUCCESS) {
             printf("Could not receive accesses, error:%d\n", success);
         }
-
-
-		total_accesses++;
-		uint64_t cache_line = msg->address / CACHE_LINE_SIZE;
-		int cache_set_number = get_cache_set_number(cache_line);
-		CacheSetState set_state = get_cache_set_state(states, cache_line, msg->cpu);
-
-
-		CacheEntryState entry_state = get_cache_entry_state(set_state, cache_line);
-		int cur_state = STATE_INVALID;
-		if(entry_state != NULL) {
-			cur_state = entry_state->state;
+		if(last_batch) {
+			printf("Processing last batch!\n");
 		}
+		total_batches++;
+		for(int i = 0; i < count; i++) {
+			access* msg = &messages[i];
+			total_accesses++;
+			uint64_t cache_line = msg->address / CACHE_LINE_SIZE;
+			int cache_set_number = get_cache_set_number(cache_line);
+			CacheSetState set_state = get_cache_set_state(states, cache_line, msg->cpu);
 
 
-		struct statechange state_change = get_msi_state_change(cur_state, msg->write);
-		CacheSetState new = apply_state_change(set_state, entry_state, state_change, cache_line);
-		new = check_eviction(new);
-		set_cache_set_state(states, new, cache_line, msg->cpu);
+			CacheEntryState entry_state = get_cache_entry_state(set_state, cache_line);
+			int cur_state = STATE_INVALID;
+			if(entry_state != NULL) {
+				cur_state = entry_state->state;
+			}
 
-		// Update state in other cpus
-		bool found_in_other_cpu = false;
-		for(int i = 0; i < AMOUNT_SIMULATED_PROCESSORS; i++) {
-			if(i != msg->cpu) {
-				CacheSetState cache_set_state = get_cache_set_state(states, cache_line, i);
-				CacheEntryState cache_entry_state = get_cache_entry_state(cache_set_state, cache_line);
-				if(cache_entry_state != NULL && cache_entry_state->state != STATE_INVALID) {//TODO check if we need to do this with invalid
-					found_in_other_cpu = true;
-					bool flush = false;
-					struct statechange new_state = get_msi_state_change_by_bus_request(cache_entry_state->state, state_change.bus_request);
-					CacheSetState new = apply_state_change(cache_set_state, cache_entry_state, state_change, cache_line);
-					new = check_eviction(cache_set_state);
-					set_cache_set_state(states, new, cache_line, msg->cpu);
+
+			struct statechange state_change = get_msi_state_change(cur_state, msg->write);
+			CacheSetState new = apply_state_change(set_state, entry_state, state_change, cache_line);
+			new = check_eviction(new);
+			set_cache_set_state(states, new, cache_line, msg->cpu);
+
+			// Update state in other cpus
+			bool found_in_other_cpu = false;
+			for(int i = 0; i < AMOUNT_SIMULATED_PROCESSORS; i++) {
+				if(i != msg->cpu) {
+					CacheSetState cache_set_state = get_cache_set_state(states, cache_line, i);
+					CacheEntryState cache_entry_state = get_cache_entry_state(cache_set_state, cache_line);
+					if(cache_entry_state != NULL && cache_entry_state->state != STATE_INVALID) {//TODO check if we need to do this with invalid
+						found_in_other_cpu = true;
+						bool flush = false;
+						struct statechange new_state = get_msi_state_change_by_bus_request(cache_entry_state->state, state_change.bus_request);
+						CacheSetState new = apply_state_change(cache_set_state, cache_entry_state, state_change, cache_line);
+						new = check_eviction(cache_set_state);
+						set_cache_set_state(states, new, cache_line, msg->cpu);
+
+					}
 
 				}
+			}
 
+			if(state_change.bus_request == BUS_REQUEST_READ && !found_in_other_cpu) {
+				// printf("Miss%llu\n", msg.address);
+				amount_misses++;
 			}
 		}
 
-		if(state_change.bus_request == BUS_REQUEST_READ && !found_in_other_cpu) {
-			// printf("Miss%llu\n", msg.address);
-			amount_misses++;
-		}
 
-
-	}while(total_accesses++);
-
-	printf("Amount of accesses:\t%d\n", total_accesses);
+	}while(!last_batch );
+	printf("Amount of batches received:\t%u\n", total_batches);
+	printf("Amount of accesses:\t%u\n", total_accesses);
 	printf("Amount writebacks:\t%d\n", amount_writebacks);
 	printf("Amount misses:\t%d\n", amount_misses);
 

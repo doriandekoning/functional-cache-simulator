@@ -20,8 +20,8 @@ access* stored_accesses;
 //TODO rank == (worldsize-1) is master
 
 bool store_msg(int worker, Messages__Packet* packet) {
-    int* index = &stored_access_counts[worker];
-    access* access_ptr = &stored_accesses[ (((worker-1)*MESSAGE_BATCH_SIZE) + *index )];
+    int* index = &stored_access_counts[worker-1];
+    access* access_ptr = &stored_accesses[ (((worker-1)*MESSAGE_BATCH_SIZE)  + *index )];
     access_ptr->address = packet->addr; //TODO map virtual to physical address
 	access_ptr->tick = packet->tick;
 	access_ptr->cpu = packet->cpuid;
@@ -31,8 +31,9 @@ bool store_msg(int worker, Messages__Packet* packet) {
 }
 
 int send_accesses(int worker, MPI_Datatype mpi_access_type) {
-    int success = MPI_Send(&stored_accesses[worker-1], MESSAGE_BATCH_SIZE, mpi_access_type, worker, 0, MPI_COMM_WORLD);//TODO
+    int success = MPI_Send(&stored_accesses[worker-1], stored_access_counts[worker-1], mpi_access_type, worker, 0, MPI_COMM_WORLD);//TODO
     stored_access_counts[worker-1] = 0; //This cannot be done for nonblocking sends
+
     if(success != MPI_SUCCESS) {
         printf("Unable to send accesses to worker: %d\n", success);
         return 1;
@@ -42,9 +43,12 @@ int send_accesses(int worker, MPI_Datatype mpi_access_type) {
 
 
 
+
+
+
 int run_coordinator(int world_size) {
     FILE *infile;
-    uint8_t buf[4048];
+    unsigned char buf[4048];
     int inamount = 0;
 
     MPI_Datatype mpi_access_type;
@@ -55,14 +59,19 @@ int run_coordinator(int world_size) {
     }
     //Setup access
     stored_access_counts = calloc(world_size-1, sizeof(int));
-    stored_accesses = calloc((world_size-1) * MESSAGE_BATCH_SIZE, sizeof(access));
-
+    stored_accesses = calloc((world_size) * MESSAGE_BATCH_SIZE, sizeof(access));
 
     infile = fopen("input.trace", "r+");
     if(!infile) {
         printf("Error occured opening file\n");
         return -1;
     }
+
+    int success = setvbuf(infile, NULL, _IOFBF, 1024*256);
+    if(success != 0 ){
+        printf("Cannot allocate IO buffer!\n");
+    }
+
     //Read file header (should say "gem5")
     char fileHeader[4];
     inamount = fread(fileHeader, 1, 4, infile);
@@ -84,11 +93,12 @@ int run_coordinator(int world_size) {
 	int open_request_counter = 0;
 	access* msg_ptr;
 	MPI_Request* request_ptr;
+    int total_batches = 0;
+    int total_packets_stored = 0;
     while(true){
-
 		char varint[1];
 		fread(varint, 1, 1, infile);
-		long long msg_len = varint_decode(varint, 1, NULL);
+		long long msg_len = varint_decode(varint, 1, buf);
 	    inamount = fread(buf, 1, msg_len, infile); //TODO read packets
         if(inamount < msg_len) {
             printf("Error occured while reading, only read: %d bytes", inamount);
@@ -99,50 +109,36 @@ int run_coordinator(int world_size) {
 
 		if(amount_packages_read > SIMULATION_LIMIT) { //TODO make limit configurable
 			printf("Simulation limit reached%d\n", amount_packages_read);
-			// MPI_Waitall(max_open_requests, open_requests, MPI_STATUS_IGNORE);
-			printf("Waited for all requests to be finsihed\n");
 			break;
 		}
 	 	MPI_Status status;
 
-        Messages__Packet* packet;
-        packet = messages__packet__unpack(NULL, msg_len, buf);
-
-		// MPI_Request* request_ptr;
-        if(packet != NULL) {
-            int cacheSetNumber = (packet->addr >> 6) % (2 << 13);
-            int worker = cacheSetNumber%(world_size-1) + 1; // Add 1 to offset the rank of the coordinator
-            bool shouldSend = store_msg(worker, packet);
-            if(shouldSend) {
-                send_accesses(worker, mpi_access_type);
-            }
-			// if(open_request_counter < max_open_requests){
-			// 	request_ptr = &open_requests[open_request_counter];
-			// 	msg_ptr = &stored_accesses[worker];
-			// 	open_request_counter++;
-			// } else{
-			// 	int finished_idx;
-			// 	// MPI_Waitany(max_open_requests, open_requests, &finished_idx, &status);//TODO check status
-			// 	request_ptr = &open_requests[finished_idx];
-			// 	msg_ptr = &open_messages[finished_idx];
-			// }
-
-
-
-
-
-        }else{
+        Messages__Packet* packet = messages__packet__unpack(NULL, msg_len, buf);
+        if(packet == NULL) {
 			printf("The %dth packet is NULL\n", amount_packages_read);
-		}
-		protobuf_c_message_free_unpacked((ProtobufCMessage *)packet, NULL); //TODO cast to prevent compiler warning
-    }
+            continue;
+        }
 
-    //TODO final batch (send < MESSAGE_BATCH_SIZE (same tag) (0 if len of last batch was exactly == MESSAGE_BATCH_SIZE))
+        int cacheSetNumber = (packet->addr >> 6) % (2 << 13);
+        int worker = cacheSetNumber%(world_size-1) + 1; // Add 1 to offset the rank of the coordinator
+        bool shouldSend = store_msg(worker, packet);
+        total_packets_stored++;
+        if(shouldSend) {
+            total_batches++;
+            send_accesses(worker, mpi_access_type);
+        }
+
+        protobuf_c_message_free_unpacked((ProtobufCMessage *)packet, NULL); //TODO cast to prevent compiler warning
+
+    }
 	for(int i = 1; i < world_size; i++) {
-		printf("Sending\n");
-		MPI_Send(NULL, 0, mpi_access_type, i, 0, MPI_COMM_WORLD);//TODO check ret
+        send_accesses(i, mpi_access_type);
 	}
 
+
+    printf("Total messages send:\t%d\n", amount_packages_read);
+    printf("Total packets stored:\t%d\n", total_packets_stored);
+    printf("Total batches send:\t%d\n", total_batches);
 	return 0;
 }
 
