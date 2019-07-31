@@ -13,7 +13,7 @@
 
 int main(int argc, char** argv) {
 
-	MPI_Init(NULL, NULL);
+	MPI_Init(&argc, &argv);
 
 	int world_size;
 	MPI_Comm_size(MPI_COMM_WORLD, &world_size);
@@ -29,9 +29,11 @@ int main(int argc, char** argv) {
 	MPI_Get_processor_name(processor_name, &name_len);
 
 
-
 	if(world_rank == 0){
-		run_coordinator(world_size);
+		if(argc < 2) {
+			printf("First argument specifies the input file location! But only %d arguments where provided\n", argc);
+		}
+		run_coordinator(world_size, argv[1]);
 	}else {
 		run_worker(world_size-1);
 	}

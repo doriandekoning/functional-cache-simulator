@@ -46,7 +46,7 @@ int send_accesses(int worker, MPI_Datatype mpi_access_type) {
 
 
 
-int run_coordinator(int world_size) {
+int run_coordinator(int world_size, char* input_file) {
     FILE *infile;
     unsigned char buf[4048];
     int inamount = 0;
@@ -61,10 +61,10 @@ int run_coordinator(int world_size) {
     stored_access_counts = calloc(world_size-1, sizeof(int));
     stored_accesses = calloc((world_size) * MESSAGE_BATCH_SIZE, sizeof(access));
 
-    infile = fopen("input.trace", "r+");
+    infile = fopen(input_file, "r+");
     if(!infile) {
         printf("Error occured opening file\n");
-        return -1;
+        exit(-1);//TODO add status exit codes
     }
 
     int success = setvbuf(infile, NULL, _IOFBF, 1024*256);
