@@ -44,7 +44,7 @@ int run_worker(int amount_workers) {
         printf("Cannot allocate memory for states\n");
         return 0;
     }
-	cache_access* messages = malloc(MESSAGE_BATCH_SIZE * sizeof(access));
+	cache_access* messages = malloc(MESSAGE_BATCH_SIZE * sizeof(cache_access));
 	uint32_t total_accesses = 0;
 	uint32_t total_batches = 0;
 	bool last_batch = false;
@@ -71,7 +71,7 @@ int run_worker(int amount_workers) {
 		}
 		total_batches++;
 		for(int i = 0; i < count; i++) {
-			access* msg = &messages[i];
+			cache_access* msg = &messages[i];
 			total_accesses++;
 			uint64_t cache_line = msg->address / CACHE_LINE_SIZE;
 			int cache_set_number = get_cache_set_number(cache_line);

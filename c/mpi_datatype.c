@@ -12,10 +12,10 @@ int get_mpi_access_datatype(MPI_Datatype* mpi_access_type){
 	int blocklengths[4] = {1,1,1,1};
 	MPI_Datatype types[4] = {MPI_UINT64_T, MPI_UINT64_T, MPI_UINT64_T, MPI_C_BOOL};
 	MPI_Aint offsets[4];
-	offsets[0] = offsetof(access, address);
-	offsets[1] = offsetof(access, tick);
-	offsets[2] = offsetof(access, cpu);
-	offsets[3] = offsetof(access, write);
+	offsets[0] = offsetof(cache_access, address);
+	offsets[1] = offsetof(cache_access, tick);
+	offsets[2] = offsetof(cache_access, cpu);
+	offsets[3] = offsetof(cache_access, write);
 	err = MPI_Type_create_struct(nitems, blocklengths, offsets, types, mpi_access_type);
 	if(err != 0) {
 		return err;

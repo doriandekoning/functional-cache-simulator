@@ -12,7 +12,7 @@
 #include "varint/varint.h"
 #include "cachestate.h"
 #include "mpi_datatype.h"
-
+#include "pipereader.h"
 
 
 
@@ -23,15 +23,18 @@ clock_t start, end;
 clock_t time_waited = 0;
 clock_t before_waited;
 
+int* cpu_id_map;
+
+
 //TODO rank == (worldsize-1) is master
 
-bool store_msg(int worker, Messages__Packet* packet) {
+bool store_msg(int worker, cache_access* access) {
     int* index = &stored_access_counts[worker-1];
     cache_access* access_ptr = &stored_accesses[ (((worker-1)*MESSAGE_BATCH_SIZE)  + *index )];
-    access_ptr->address = packet->addr; //TODO map virtual to physical address
-	access_ptr->tick = packet->tick;
-	access_ptr->cpu = packet->cpuid;
-    access_ptr->write = packet->cmd == 1;
+    access_ptr->address = access->address; //TODO map virtual to physical address
+	access_ptr->tick = access->tick;
+	access_ptr->cpu = access->cpu;
+    access_ptr->write = access->write;
     (*index)++;
     return *index >= MESSAGE_BATCH_SIZE;
 }
@@ -49,14 +52,27 @@ int send_accesses(int worker, MPI_Datatype mpi_access_type) {
     return 0;
 }
 
+int map_cpu_id(int cpu_id) {
+    for(int i = 0; i < AMOUNT_SIMULATED_PROCESSORS; i++) {
+        if(cpu_id_map[i] == cpu_id){
+            return i;
+        } else if(cpu_id_map[i] == INT_MAX) {
+            cpu_id_map[i] = cpu_id;
+            return i;
+        }
+    }
+    printf("Cannot map cpu!\n");
+    exit(0);
+}
 
 
-
-
-
-int run_coordinator(int world_size, char* input_file) {
-    FILE *infile;
+int run_coordinator(int world_size, char* input_file) { //TODO rename to pipe
+    FILE *pipe;
     unsigned char buf[4048];
+    cpu_id_map = malloc(sizeof(int)*AMOUNT_SIMULATED_PROCESSORS); //TODO do mapping on worker
+    for(int i = 0; i < AMOUNT_SIMULATED_PROCESSORS; i++) {
+        cpu_id_map[i] = INT_MAX;
+    }
 
     MPI_Datatype mpi_access_type;
     int err = get_mpi_access_datatype(&mpi_access_type);
@@ -66,77 +82,50 @@ int run_coordinator(int world_size, char* input_file) {
     }
     //Setup access
     stored_access_counts = calloc(world_size-1, sizeof(int));
-    stored_accesses = calloc((world_size) * MESSAGE_BATCH_SIZE, sizeof(access));
+    stored_accesses = calloc((world_size) * MESSAGE_BATCH_SIZE, sizeof(cache_access));
 
-    infile = fopen(input_file, "r+");
-    if(!infile) {
+    pipe = fopen(input_file, "r+");
+    if(!pipe) {
         printf("Error occured opening file\n");
         exit(-1);//TODO add status exit codes
     }
 
-    int success = setvbuf(infile, NULL, _IOFBF, 1024);
-    if(success != 0 ){
-        printf("Cannot allocate IO buffer!\n");
-    }
-
-    //Read file header (should say "gem5")
-    char fileHeader[4];
-    if(fread(fileHeader, 1, 4, infile) != 4){
-        printf("Could not read file header");
-        return -1;
-    }
-
-
-	//Read length of header packet
-	char varint[1];
-	fread(varint, 1, 1, infile);
-	long long headerlength = varint_decode(varint, 1, NULL);
-	fseek(infile, headerlength, SEEK_CUR);
-	int amount_packages_read = 0;
-	//Open requests
-	int max_open_requests = 100;
-	MPI_Request* open_requests = calloc(max_open_requests, sizeof(MPI_Request));
-	cache_access* open_messages = calloc(max_open_requests, sizeof(access));
-	int open_request_counter = 0;
-	cache_access* msg_ptr;
-	MPI_Request* request_ptr;
     int total_batches = 0;
     int total_packets_stored = 0;
+    int amount_packages_read = 0;
     start = clock();
+
+    if(read_header(pipe) != (void*) -1) {
+        printf("Unable to read header!\n");
+        return 2;
+    }
+
+    cache_access* tmp_access = malloc(sizeof(cache_access));
     while(true){
-		char varint[1];
-		fread(varint, 1, 1, infile);
-		long long msg_len = varint_decode(varint, 1, buf);
-        if(fread(buf, msg_len, 1, infile) != 1) {
-            printf("Found end of file\n");
-            return -1;
-        }
 
 		amount_packages_read++;
+
+        get_next_access(pipe, tmp_access);
+        tmp_access->cpu = map_cpu_id(tmp_access->cpu);
+        // printf("{addr:%llu,tick:%llu,cpu:%llu,write:%d}\n", tmp_access->address, tmp_access->tick, tmp_access->cpu, tmp_access->write);
 
 		if(amount_packages_read > SIMULATION_LIMIT) { //TODO make limit configurable
 			printf("Simulation limit reached%d\n", amount_packages_read);
 			break;
 		}
-	 	MPI_Status status;
-        Messages__Packet* packet = messages__packet__unpack(NULL, msg_len, buf);
-        if(packet == NULL) {
-			printf("The %dth packet is NULL\n", amount_packages_read);
-            continue;
-        }
 
-        int cacheSetNumber = (packet->addr >> 6) % (2 << 13);
+        int cacheSetNumber = (tmp_access->address >> 6) % (2 << 13);
         int worker = cacheSetNumber%(world_size-1) + 1; // Add 1 to offset the rank of the coordinator
-        bool shouldSend = store_msg(worker, packet);
+        bool shouldSend = store_msg(worker, tmp_access);
         total_packets_stored++;
         if(shouldSend) {
             total_batches++;
             send_accesses(worker, mpi_access_type);
         }
 
-        protobuf_c_message_free_unpacked((ProtobufCMessage *)packet, NULL); //TODO cast to prevent compiler warning
 
     }
+    free(tmp_access);
 	for(int i = 1; i < world_size; i++) {
         send_accesses(i, mpi_access_type);
 	}
