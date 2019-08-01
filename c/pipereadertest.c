@@ -89,6 +89,7 @@ int main(int argc, char** argv) {
 
 
             printf("{addr:%llu,tick:%llu,cpu:%llu,write:%d}\n", access->address, access->tick, access->cpu, access->write);
+            free(access);
         }   else {
             printf("Unknown record type encountered!\n");
             return 1;
