@@ -3,9 +3,11 @@
 #include <mpi.h>
 
 
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <time.h>
 #include "messages/packet.pb-c.h"
 #include "varint/varint.h"
 #include "cachestate.h"
@@ -15,13 +17,17 @@
 
 
 int* stored_access_counts;
-access* stored_accesses;
+cache_access* stored_accesses;
+
+clock_t start, end;
+clock_t time_waited = 0;
+clock_t before_waited;
 
 //TODO rank == (worldsize-1) is master
 
 bool store_msg(int worker, Messages__Packet* packet) {
     int* index = &stored_access_counts[worker-1];
-    access* access_ptr = &stored_accesses[ (((worker-1)*MESSAGE_BATCH_SIZE)  + *index )];
+    cache_access* access_ptr = &stored_accesses[ (((worker-1)*MESSAGE_BATCH_SIZE)  + *index )];
     access_ptr->address = packet->addr; //TODO map virtual to physical address
 	access_ptr->tick = packet->tick;
 	access_ptr->cpu = packet->cpuid;
@@ -31,7 +37,9 @@ bool store_msg(int worker, Messages__Packet* packet) {
 }
 
 int send_accesses(int worker, MPI_Datatype mpi_access_type) {
+    before_waited = clock();
     int success = MPI_Send(&stored_accesses[worker-1], stored_access_counts[worker-1], mpi_access_type, worker, 0, MPI_COMM_WORLD);//TODO
+    time_waited += (clock() - before_waited);
     stored_access_counts[worker-1] = 0; //This cannot be done for nonblocking sends
 
     if(success != MPI_SUCCESS) {
@@ -49,7 +57,6 @@ int send_accesses(int worker, MPI_Datatype mpi_access_type) {
 int run_coordinator(int world_size, char* input_file) {
     FILE *infile;
     unsigned char buf[4048];
-    int inamount = 0;
 
     MPI_Datatype mpi_access_type;
     int err = get_mpi_access_datatype(&mpi_access_type);
@@ -67,18 +74,18 @@ int run_coordinator(int world_size, char* input_file) {
         exit(-1);//TODO add status exit codes
     }
 
-    int success = setvbuf(infile, NULL, _IOFBF, 1024*256);
+    int success = setvbuf(infile, NULL, _IOFBF, 1024);
     if(success != 0 ){
         printf("Cannot allocate IO buffer!\n");
     }
 
     //Read file header (should say "gem5")
     char fileHeader[4];
-    inamount = fread(fileHeader, 1, 4, infile);
-    if(inamount != 4){
+    if(fread(fileHeader, 1, 4, infile) != 4){
         printf("Could not read file header");
         return -1;
     }
+
 
 	//Read length of header packet
 	char varint[1];
@@ -89,19 +96,19 @@ int run_coordinator(int world_size, char* input_file) {
 	//Open requests
 	int max_open_requests = 100;
 	MPI_Request* open_requests = calloc(max_open_requests, sizeof(MPI_Request));
-	access* open_messages = calloc(max_open_requests, sizeof(access));
+	cache_access* open_messages = calloc(max_open_requests, sizeof(access));
 	int open_request_counter = 0;
-	access* msg_ptr;
+	cache_access* msg_ptr;
 	MPI_Request* request_ptr;
     int total_batches = 0;
     int total_packets_stored = 0;
+    start = clock();
     while(true){
 		char varint[1];
 		fread(varint, 1, 1, infile);
 		long long msg_len = varint_decode(varint, 1, buf);
-	    inamount = fread(buf, 1, msg_len, infile); //TODO read packets
-        if(inamount < msg_len) {
-            printf("Error occured while reading, only read: %d bytes", inamount);
+        if(fread(buf, msg_len, 1, infile) != 1) {
+            printf("Found end of file\n");
             return -1;
         }
 
@@ -112,7 +119,6 @@ int run_coordinator(int world_size, char* input_file) {
 			break;
 		}
 	 	MPI_Status status;
-
         Messages__Packet* packet = messages__packet__unpack(NULL, msg_len, buf);
         if(packet == NULL) {
 			printf("The %dth packet is NULL\n", amount_packages_read);
@@ -134,7 +140,10 @@ int run_coordinator(int world_size, char* input_file) {
 	for(int i = 1; i < world_size; i++) {
         send_accesses(i, mpi_access_type);
 	}
-
+    end = clock();
+    printf("Time used by coordinator: %f\n", (double)(end-start)/CLOCKS_PER_SEC);
+    printf("Time spend waiting for communication: %f\n", (double)time_waited/CLOCKS_PER_SEC);
+    printf("Time spend waiting:%f\n", (double)(time_waited/(end-start)));
 
     printf("Total messages send:\t%d\n", amount_packages_read);
     printf("Total packets stored:\t%d\n", total_packets_stored);

@@ -1,8 +1,13 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include "cachestate.h"
+#include <fcntl.h>
+#include <unistd.h>
+
 
 const int PIPE_OPEN_ERROR = 1;
 const int PIPE_READ_ERROR = 2;
@@ -30,6 +35,8 @@ int main(int argc, char** argv) {
         return PIPE_OPEN_ERROR;
     }
 
+
+    // printf("Pipesize:%d\n", fcntl(pipe, F_GETPIPE_SZ));
 
     // Read eventid
     uint64_t eventid;
@@ -72,7 +79,7 @@ int main(int argc, char** argv) {
                 printf("Only traces with eventID 75 are supported, found event with id: %llu\n", event_id);
                 return 1;
             }
-            access* access = malloc(sizeof(access));
+            cache_access* access = malloc(sizeof(access));
             READ_UINT64_FROM_PIPE(access->tick);
             uint32_t rec_len; //Unused
             READ_UINT32_FROM_PIPE(rec_len)

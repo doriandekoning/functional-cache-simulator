@@ -1,6 +1,5 @@
 #ifndef CACHESTATE_H
 #define CACHESTATE_H
-
 #include <stdbool.h>
 #include <stdint.h>
 #include "config.h"
@@ -34,7 +33,7 @@ typedef struct access_s {
 	uint64_t tick;
 	uint64_t cpu;
 	bool write;
-} access;
+} cache_access;
 
 
 typedef struct CacheEntry* CacheEntryState;
