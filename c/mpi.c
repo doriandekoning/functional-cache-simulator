@@ -12,10 +12,7 @@
 
 
 int main(int argc, char** argv) {
-        ADDRESS_OFFSET_MASK = setupmask(0,5);
-        ADDRESS_INDEX_MASK = setupmask(6,17);
-        ADDRESS_TAG_MASK = setupmask(18,63);
-
+	init_cachestate_masks(12, 6);
 	MPI_Init(&argc, &argv);
 
 	int world_size;

@@ -68,7 +68,6 @@ int get_cr3_change(FILE* pipe, cr3_change* change){
 	READ_UINT32_FROM_PIPE(trace_pid);
 	READ_UINT64_FROM_PIPE(change->cpu);
 	READ_UINT64_FROM_PIPE(change->new_cr3);
-	printf("New cr3 value:%d\n", change->new_cr3);
 	return 0;
 }
 
