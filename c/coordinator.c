@@ -95,40 +95,60 @@ int run_coordinator(int world_size, char* input_file) { //TODO rename to pipe
     int amount_packages_read = 0;
     start = clock();
 
-    if(read_header(pipe) != (void*) -1) {
+    if(read_header(pipe) != 0) {
         printf("Unable to read header!\n");
         return 2;
     }
-
     cache_access* tmp_access = malloc(sizeof(cache_access));
+    cr3_change* tmp_cr3_change = malloc(sizeof(cr3_change));
     while(true){
 
-		amount_packages_read++;
+	amount_packages_read++;
+	int next_eventid = get_next_event_id(pipe);
+	if(next_eventid < 0) {
+		printf("Could not get next eventid!\n");
+		break;
+	}
+	if(next_eventid == 67) {
+		//Cache access
+		if(get_cache_access(pipe, tmp_access)){
+			printf("Could not read cache access!\n");
+			break;
+		}
+	        tmp_access->cpu = map_cpu_id(tmp_access->cpu);
+		// printf("{addr:%llu,tick:%llu,cpu:%llu,write:%d}\n", tmp_access->address, tmp_access->tick, tmp_access->cpu, tmp_access->write);
 
-        get_next_access(pipe, tmp_access);
-        tmp_access->cpu = map_cpu_id(tmp_access->cpu);
-        // printf("{addr:%llu,tick:%llu,cpu:%llu,write:%d}\n", tmp_access->address, tmp_access->tick, tmp_access->cpu, tmp_access->write);
-
-		if(amount_packages_read > SIMULATION_LIMIT) { //TODO make limit configurable
-			printf("Simulation limit reached%d\n", amount_packages_read);
+		if(amount_packages_read > SIMULATION_LIMIT) {
+			printf("Simulation limit reached%d\n",
+			       amount_packages_read);
 			break;
 		}
 
-        int cacheSetNumber = (tmp_access->address >> 6) % (2 << 13);
-        int worker = cacheSetNumber%(world_size-1) + 1; // Add 1 to offset the rank of the coordinator
-        bool shouldSend = store_msg(worker, tmp_access);
-        total_packets_stored++;
-        if(shouldSend) {
-            total_batches++;
-            send_accesses(worker, mpi_access_type);
-        }
+	        int cacheSetNumber = (tmp_access->address >> 6) % (2 << 13);
+	        int worker = cacheSetNumber%(world_size-1) + 1; // Add 1 to offset the rank of the coordinator
+	        bool shouldSend = store_msg(worker, tmp_access);
+	        total_packets_stored++;
+	        if(shouldSend) {
+	            total_batches++;
+	            send_accesses(worker, mpi_access_type);
+	        }
 
-
-    }
-    free(tmp_access);
-	for(int i = 1; i < world_size; i++) {
-        send_accesses(i, mpi_access_type);
+	}else if(next_eventid == 68) {
+		if(get_cr3_change(pipe, tmp_cr3_change)) {
+			printf("Could not read cr3 change!\n");
+			break;
+		}
+		printf("New cr3:%lx\n", tmp_cr3_change->new_cr3);
+	}else{
+		printf("Encountered unknown event\n");
 	}
+   }
+	free(tmp_access);
+	free(tmp_cr3_change);
+	for(int i = 1; i < world_size; i++) {
+		send_accesses(i, mpi_access_type);
+	}
+
     end = clock();
     printf("Time used by coordinator: %f\n", (double)(end-start)/CLOCKS_PER_SEC);
     printf("Time spend waiting for communication: %f\n", (double)time_waited/CLOCKS_PER_SEC);
@@ -137,7 +157,7 @@ int run_coordinator(int world_size, char* input_file) { //TODO rename to pipe
     printf("Total messages send:\t%d\n", amount_packages_read);
     printf("Total packets stored:\t%d\n", total_packets_stored);
     printf("Total batches send:\t%d\n", total_batches);
-	return 0;
+    return 0;
 }
 
 

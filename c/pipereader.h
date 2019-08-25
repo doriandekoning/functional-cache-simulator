@@ -15,7 +15,16 @@ struct qemu_mem_info {
      bool    store      : 1; /* wheter it's a store operation */
 };
 
-void* read_header(FILE * pipe);
-cache_access* get_next_access(FILE* pipe, cache_access* access);
+typedef struct cr3_change_t {
+    uint64_t tick;
+    uint64_t cpu;
+    uint64_t new_cr3;
+} cr3_change;
+
+int read_header(FILE * pipe);
+int get_cache_access(FILE* pipe, cache_access* access);
+int get_cr3_change(FILE* pipe, cr3_change* update);
+int get_next_event_id(FILE* pipe);
+
 
 #endif //PIPEREADER_H
