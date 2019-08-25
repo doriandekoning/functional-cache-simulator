@@ -56,7 +56,7 @@ int get_cache_access(FILE* pipe, cache_access* access) {
 	READ_UINT64_FROM_PIPE(info)
 	uint64_t size =  (1 << (info.size_shift));
 	if(size > 64) {printf("Size larger than cachelinesize!");}
-	access->write =  info.store;
+	access->type = info.store ? CACHE_WRITE : CACHE_READ;
 	return 0;
 }
 

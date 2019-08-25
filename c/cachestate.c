@@ -55,9 +55,9 @@ CacheEntryState get_cache_entry_state(CacheSetState cacheSetState, uint64_t addr
 }
 
 
-struct statechange get_msi_state_change(int current_state, bool write) {
+struct statechange get_msi_state_change(int current_state, uint8_t access_type) {
 	struct statechange ret;
-	if(write) {
+	if(access_type == CACHE_WRITE) {
 		if(current_state == STATE_INVALID) {
 			//PrWrI: accessing processor to M and issues BusRdX
 			ret.new_state = STATE_MODIFIED;
@@ -74,7 +74,7 @@ struct statechange get_msi_state_change(int current_state, bool write) {
 			ret.new_state = -1;
 			ret.bus_request = -1;
 		}
-	} else{
+	} else if( access_type == CACHE_READ) {
 		if(current_state == STATE_INVALID){
 			//PrRdI: accessing processor to S others to S
 			ret.new_state = STATE_SHARED;
@@ -89,6 +89,9 @@ struct statechange get_msi_state_change(int current_state, bool write) {
 			ret.new_state = -1;
 			ret.bus_request = -1;
 		}
+	}else{
+		printf("Received unknown access type!\n");
+		exit(-1);
 	}
 	return ret;
 }

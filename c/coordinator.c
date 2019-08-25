@@ -34,7 +34,7 @@ bool store_msg(int worker, cache_access* access) {
     access_ptr->address = access->address; //TODO map virtual to physical address
 	access_ptr->tick = access->tick;
 	access_ptr->cpu = access->cpu;
-    access_ptr->write = access->write;
+    access_ptr->type = access->type;
     (*index)++;
     return *index >= MESSAGE_BATCH_SIZE;
 }
@@ -118,15 +118,12 @@ int run_coordinator(int world_size, char* input_file) { //TODO rename to pipe
 	        tmp_access->cpu = map_cpu_id(tmp_access->cpu);
 		// printf("{addr:%llu,tick:%llu,cpu:%llu,write:%d}\n", tmp_access->address, tmp_access->tick, tmp_access->cpu, tmp_access->write);
 
-		if(amount_packages_read > SIMULATION_LIMIT) {
+		if(amount_packages_read > SIMULATION_LIMIT) {//TODO also in else
 			printf("Simulation limit reached%d\n",
 			       amount_packages_read);
 			break;
 		}
-		//Shift to right 6 bits to remove tag, index is 13 bits
-		//therefore the modulus
-	        int index = (tmp_access->address >> 6) % (2 << 13);
-	        int worker = index%(world_size-1) + 1; // Add 1 to offset the rank of the coordinator
+	        int worker = (ADDRESS_INDEX(tmp_access->address) % (world_size-1)) + 1; // Add 1 to offset the rank of the coordinator
 	        bool shouldSend = store_msg(worker, tmp_access);
 	        total_packets_stored++;
 	        if(shouldSend) {
@@ -138,6 +135,17 @@ int run_coordinator(int world_size, char* input_file) { //TODO rename to pipe
 		if(get_cr3_change(pipe, tmp_cr3_change)) {
 			printf("Could not read cr3 change!\n");
 			break;
+		}
+		tmp_access->tick = tmp_cr3_change->tick;
+		tmp_access->address = tmp_cr3_change->new_cr3;
+		tmp_access->cpu = map_cpu_id(tmp_cr3_change->cpu);
+		tmp_access->type = CR3_UPDATE;
+		total_packets_stored++;
+		for(int i = 0; i < world_size -1; i++){//TODO remove duplicate code
+			if(store_msg(i+1, tmp_access)) {
+				total_batches++;
+				send_accesses(i+1, mpi_access_type);
+			}
 		}
 		//printf("New cr3:%lx\n", tmp_cr3_change->new_cr3);
 	}else{

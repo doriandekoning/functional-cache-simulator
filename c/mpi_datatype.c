@@ -15,7 +15,7 @@ int get_mpi_access_datatype(MPI_Datatype* mpi_access_type){
 	offsets[0] = offsetof(cache_access, address);
 	offsets[1] = offsetof(cache_access, tick);
 	offsets[2] = offsetof(cache_access, cpu);
-	offsets[3] = offsetof(cache_access, write);
+	offsets[3] = offsetof(cache_access, type);
 	err = MPI_Type_create_struct(nitems, blocklengths, offsets, types, mpi_access_type);
 	if(err != 0) {
 		return err;

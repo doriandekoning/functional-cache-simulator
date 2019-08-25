@@ -31,19 +31,19 @@ CacheSetState check_eviction(CacheSetState state) {
 
 
 int run_worker(int amount_workers) {
-    MPI_Datatype mpi_access_type;
-    int err = get_mpi_access_datatype(&mpi_access_type);
-    if(err != 0){
-        printf("Unable to create datatype, erorr:%d\n", err);
-        return err;
-    }
+	MPI_Datatype mpi_access_type;
+	int err = get_mpi_access_datatype(&mpi_access_type);
+	if(err != 0){
+		printf("Unable to create datatype, erorr:%d\n", err);
+		return err;
+	}
 	printf("Allocating a state array of size:%d * %lu\n", AMOUNT_SIMULATED_PROCESSORS * (CACHE_SIZE/amount_workers), sizeof(struct CacheEntry*));
 
 	CacheState states = calloc(AMOUNT_SIMULATED_PROCESSORS * (CACHE_SIZE/amount_workers), sizeof(struct CacheEntry*));
-    if(states == NULL) {
-        printf("Cannot allocate memory for states\n");
-        return 0;
-    }
+	if(states == NULL) {
+		printf("Cannot allocate memory for states\n");
+		return 0;
+	}
 	cache_access* messages = malloc(MESSAGE_BATCH_SIZE * sizeof(cache_access));
 	uint32_t total_accesses = 0;
 	uint32_t total_batches = 0;
@@ -51,21 +51,21 @@ int run_worker(int amount_workers) {
 	do{
 		MPI_Status status;//. = malloc(sizeof(MPI_Status));
 		int result;
-		MPI_Probe(0, 0, MPI_COMM_WORLD, &status);
+		MPI_Probe(0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 		int count;
 		MPI_Get_count(&status, mpi_access_type, &count);
 		if (count < MESSAGE_BATCH_SIZE) {
 			printf("Finished with %d messages left\n", count);
 			last_batch = true;
 		} else if(count > MESSAGE_BATCH_SIZE) {
-            printf("Received more than MESSAGE_BATCH_SIZE messages: %d\n", count);
-			exit(1);
-        }
+		    printf("Received more than MESSAGE_BATCH_SIZE messages: %d\n", count);
+		    exit(1);
+		}
 
 		int success = MPI_Recv(messages, count, mpi_access_type, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        if(success != MPI_SUCCESS) {
-            printf("Could not receive accesses, error:%d\n", success);
-        }
+		if(success != MPI_SUCCESS) {
+			printf("Could not receive accesses, error:%d\n", success);
+		}
 		if(last_batch) {
 			printf("Processing last batch!\n");
 		}
@@ -73,8 +73,11 @@ int run_worker(int amount_workers) {
 		for(int i = 0; i < count; i++) {
 			cache_access* msg = &messages[i];
 			total_accesses++;
+			if(msg->type == CR3_UPDATE){
+				continue; //TODO handle
+			}
 			CacheSetState set_state =
-				get_cache_set_state(states, msg->address, msg->cpu);
+			get_cache_set_state(states, msg->address, msg->cpu);
 
 			CacheEntryState entry_state =
 				get_cache_entry_state(set_state, msg->address);
@@ -82,9 +85,7 @@ int run_worker(int amount_workers) {
 			if(entry_state != NULL) {
 				cur_state = entry_state->state;
 			}
-
-
-			struct statechange state_change = get_msi_state_change(cur_state, msg->write);
+			struct statechange state_change = get_msi_state_change(cur_state, msg->type);
 			CacheSetState new = apply_state_change(set_state, entry_state, state_change, msg->address);
 			new = check_eviction(new);
 			set_cache_set_state(states, new, msg->address, msg->cpu);
@@ -102,9 +103,7 @@ int run_worker(int amount_workers) {
 						CacheSetState new = apply_state_change(cache_set_state, cache_entry_state, state_change, msg->address);
 						new = check_eviction(cache_set_state);
 						set_cache_set_state(states, new, msg->address, msg->cpu);
-
 					}
-
 				}
 			}
 
@@ -114,14 +113,13 @@ int run_worker(int amount_workers) {
 			}
 		}
 
-
 	}while(!last_batch );
 	printf("Amount of batches received:\t%u\n", total_batches);
 	printf("Amount of accesses:\t%u\n", total_accesses);
 	printf("Amount writebacks:\t%d\n", amount_writebacks);
 	printf("Amount misses:\t%d\n", amount_misses);
 
-    free(states);
+	free(states);
 
 	return 0;
 }
