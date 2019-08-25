@@ -5,6 +5,16 @@
 
 #include "cachestate.h"
 
+uint64_t ADDRESS_OFFSET_MASK = 0;
+uint64_t ADDRESS_TAG_MASK = 0;
+uint64_t ADDRESS_INDEX_MASK = 0;
+uint64_t setupmask(unsigned from, unsigned to) {
+        uint64_t mask = 0;
+        for(unsigned i = from; i <=to; i++) {
+                mask |= (1ULL << i);
+        }
+        return mask;
+}
 
 const int STATE_INVALID = 0;
 const int STATE_SHARED = 1;
@@ -16,24 +26,27 @@ const int BUS_REQUEST_READX = 2;
 const int BUS_REQUEST_UPGR = 3;
 const int BUS_REQUEST_FLUSH = 4;
 
-uint64_t get_cache_set_number(uint64_t cache_line) {
-	return cache_line % AMOUNT_CACHE_SETS;
+
+void init_cachestate_masks(int indexsize, int offsetsize) {
+        ADDRESS_OFFSET_MASK = setupmask(0,(offsetsize-1));
+        ADDRESS_TAG_MASK = setupmask(offsetsize+indexsize,63);
+        ADDRESS_INDEX_MASK = setupmask(offsetsize,(indexsize+offsetsize-1));
 }
 
-CacheSetState get_cache_set_state(CacheState state, uint64_t cache_line, uint64_t cpu) {
-	return state[(AMOUNT_CACHE_SETS * cpu) + get_cache_set_number(cache_line)];
+CacheSetState get_cache_set_state(CacheState state, uint64_t address, uint64_t cpu) {
+	return state[(AMOUNT_CACHE_SETS * cpu) + ADDRESS_INDEX(address)];
 }
 
-void set_cache_set_state(CacheState state, CacheSetState new, uint64_t cache_line, uint64_t cpu) {
-	state[(AMOUNT_CACHE_SETS * cpu)  + get_cache_set_number(cache_line)] = (struct CacheEntry*)new;
+void set_cache_set_state(CacheState state, CacheSetState new, uint64_t address, uint64_t cpu) {
+	state[(AMOUNT_CACHE_SETS * cpu)  + ADDRESS_INDEX(address)] = (struct CacheEntry*)new;
 }
 
 
 // Returns the cacheEntry assosciated with the given address or NULL if not present in the cache
-CacheEntryState get_cache_entry_state(CacheSetState cacheSetState, uint64_t cache_line) {
+CacheEntryState get_cache_entry_state(CacheSetState cacheSetState, uint64_t address) {
 	CacheEntryState next = cacheSetState;
 	while(next != NULL) {
-		if(next->address == cache_line) {
+		if(next->tag == ADDRESS_TAG(address)) {
 			return next;
 		}
 		next = next->next;
@@ -107,7 +120,7 @@ struct statechange get_msi_state_change_by_bus_request(int current_state, int bu
 
 
 
-CacheSetState apply_state_change(CacheSetState cacheLineState, struct CacheEntry* entry, struct statechange statechange, uint64_t cache_line) {
+CacheSetState apply_state_change(CacheSetState cacheLineState, struct CacheEntry* entry, struct statechange statechange, uint64_t address) {
 	struct CacheEntry* head = get_head(cacheLineState);
 	if(entry != NULL && statechange.new_state == STATE_INVALID) {
 		//Remove line from cache
@@ -116,7 +129,7 @@ CacheSetState apply_state_change(CacheSetState cacheLineState, struct CacheEntry
 		}
 		remove_item(entry);
 		free(entry);
-
+		return head;
 	} else if (entry != NULL) {
 		// Move entry to back (front is LRU)
 		if(entry == head) {
@@ -132,11 +145,10 @@ CacheSetState apply_state_change(CacheSetState cacheLineState, struct CacheEntry
 			printf("Could not allocate new cacheentry\n");
 			exit(1);
 		}
-		new->address = cache_line;
+		new->tag = ADDRESS_TAG(address);
 		new->state = statechange.new_state;
 
 		cacheLineState = append_item(cacheLineState, new);
-		get_head(cacheLineState);
 	}
 	return get_head(cacheLineState); //TODO optimize
 }

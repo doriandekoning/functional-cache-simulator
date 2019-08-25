@@ -12,13 +12,6 @@ int tests_run = 0;
 //;failed_tests+=result;if(result){printf("Test passed!\n"
 //); } else {printf("Test %s failed!", "test");}} while(0)
 
-int test_get_cache_set_number(){
-    uint64_t expected = 0;
-    _assert(get_cache_set_number(0) == 0);
-    expected = 0;
-    _assert(get_cache_set_number(AMOUNT_CACHE_SETS+10) == 10);
-    return 0;
-}
 
 int test_get_cache_set_state() {
     CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_SIZE, sizeof(struct CacheEntry*));
@@ -37,31 +30,31 @@ int test_get_cache_set_state() {
     //Test getting the line state not from the first cacheline
     struct CacheEntry middleEntry;
     state[999] = &middleEntry;
-    _assert(get_cache_set_state(state, 999, 0) == &middleEntry);
+    _assert(get_cache_set_state(state, 999 << 6, 0) == &middleEntry);
 
     //Test getting midle entry in another cpu
     struct CacheEntry middleOtherCPUEntry;
     state[999 + (2*AMOUNT_CACHE_SETS)] = &middleOtherCPUEntry;
-    _assert(get_cache_set_state(state, 999, 2) == &middleOtherCPUEntry);
+    _assert(get_cache_set_state(state, 999 << 6, 2) == &middleOtherCPUEntry);
 
     return 0;
 }
 
 int test_get_cache_entry_state() {
-    struct CacheEntry firstEntry = {.address = 1}; //TODO rename in CacheEntry to line (or official name)
-    struct CacheEntry thirdEntry = {.address = 3};
-    struct CacheEntry secondEntry = {.address = 2, .prev = &firstEntry, .next = &thirdEntry};
+    struct CacheEntry firstEntry = {.tag = 1};
+    struct CacheEntry thirdEntry = {.tag = 3};
+    struct CacheEntry secondEntry = {.tag = 2, .prev = &firstEntry, .next = &thirdEntry};
     firstEntry.next = &secondEntry;
     thirdEntry.prev = &secondEntry;
 
     //Test get first entry
-    _assert(&firstEntry == get_cache_entry_state(&firstEntry, 1));
+    _assert(&firstEntry == get_cache_entry_state(&firstEntry, (1 << 18)));
     //Test get second entry
-    _assert(&secondEntry == get_cache_entry_state(&firstEntry, 2));
+    _assert(&secondEntry == get_cache_entry_state(&firstEntry, (2 << 18)));
     //Test get third entry
-    _assert(&thirdEntry == get_cache_entry_state(&firstEntry, 3));
+    _assert(&thirdEntry == get_cache_entry_state(&firstEntry, (3 << 18)));
     //Test not found
-    _assert(NULL == get_cache_entry_state(&firstEntry, 81));
+    _assert(NULL == get_cache_entry_state(&firstEntry, (81 << 18)));
     return 0;
 }
 
@@ -69,20 +62,20 @@ int test_set_cache_set_state() {
     CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_SIZE, sizeof(struct CacheEntry*));
 
     //Test set in empty location
-    struct CacheEntry newEntry = {.address=10};
-    set_cache_set_state(state, &newEntry, 10, 0);
+    struct CacheEntry newEntry = {.tag=10};
+    set_cache_set_state(state, &newEntry, 10 << 6, 0);
     _assert(state[10]  == &newEntry);
 
     //Test override
-    struct CacheEntry new10Entry = {.address=10};
-    struct CacheEntry old10Entry = {.address=11};
+    struct CacheEntry new10Entry = {.tag=10};
+    struct CacheEntry old10Entry = {.tag=11};
     state[12] = &old10Entry;
-    set_cache_set_state(state, &new10Entry, 12, 0);
+    set_cache_set_state(state, &new10Entry, 12 << 6, 0);
     _assert(state[12]  == &new10Entry);
 
     //Test set in different cpu
-     struct CacheEntry otherCPUEntry = {.address=10};
-    set_cache_set_state(state, &newEntry, 10, 2);
+     struct CacheEntry otherCPUEntry = {.tag=10};
+    set_cache_set_state(state, &newEntry, 10 << 6, 2);
     _assert(state[10 + (2 * AMOUNT_CACHE_SETS)] == &newEntry);
 
     return 0;
@@ -254,17 +247,17 @@ int test_get_head() {
 
 CacheSetState setupCacheSetState() {
     struct CacheEntry* first = calloc(1, sizeof(struct CacheEntry));
-    first->address = 1;
+    first->tag = 1;
     struct CacheEntry* second = calloc(1, sizeof(struct CacheEntry));
-    second->address = 2;
+    second->tag = 2;
     second->prev = first;
     first->next = second;
     struct CacheEntry* third = calloc(1, sizeof(struct CacheEntry));
-    third->address = 3;
+    third->tag = 3;
     third->prev = second;
     second->next = third;
     struct CacheEntry* fourth = calloc(1, sizeof(struct CacheEntry));
-    fourth->address = 4;
+    fourth->tag = 4;
     fourth->prev = third;
     third->next = fourth;
     return first;
@@ -285,7 +278,6 @@ int test_apply_state_change_evict(){
 
 int test_apply_state_change_evict_head(){
     CacheSetState state = setupCacheSetState();
-    get_head(state);
     struct statechange change = {.new_state = STATE_INVALID};
     struct CacheEntry* second = state->next;
     CacheSetState new_state = apply_state_change(state, state, change, 0);
@@ -301,8 +293,8 @@ int test_apply_state_change_modified_third(){
     CacheSetState new_state = apply_state_change(state, state->next->next, change, 0);
     _assert(new_state == state);
     _assert(list_length(new_state) == 4);
-    _assert(state->next->next->address == 4);
-    _assert(state->next->next->next->address == 3);
+    _assert(state->next->next->tag == 4);
+    _assert(state->next->next->next->tag == 3);
     _assert(state->next->next->next->state == STATE_MODIFIED);
     return 0;
 }
@@ -315,8 +307,8 @@ int test_apply_state_change_modified_first(){
     CacheSetState new_state = apply_state_change(state, state, change, 0);
     _assert(new_state == second);
     _assert(list_length(new_state) == 4);
-    _assert(new_state->next->next->address == 4);
-    _assert(new_state->next->next->next->address == 1);
+    _assert(new_state->next->next->tag == 4);
+    _assert(new_state->next->next->next->tag == 1);
     _assert(new_state->next->next->next->state == STATE_MODIFIED);
     return 0;
 }
@@ -326,11 +318,11 @@ int test_apply_state_insert(){
     get_head(state);
     struct statechange change = {.new_state = STATE_MODIFIED};
     struct CacheEntry* second = state->next;
-    CacheSetState new_state = apply_state_change(state, NULL, change, 9);
+    CacheSetState new_state = apply_state_change(state, NULL, change, (9 << 18));
     _assert(state == new_state);
     _assert(list_length(new_state) == 5);
     _assert(state->next->next->next->next->state == STATE_MODIFIED);
-    _assert(state->next->next->next->next->address == 9);
+    _assert(state->next->next->next->next->tag == 9);
 
     return 0;
 }
@@ -342,14 +334,14 @@ int test_apply_state_empty(){
     CacheSetState new_state = apply_state_change(NULL, NULL, change, 9);
     _assert(list_length(new_state) == 1);
     _assert(new_state->state == STATE_MODIFIED);
-    _assert(new_state->address == 9);
+    _assert(new_state->tag == 9);
     return 0;
 }
 
 
 int main(int argc, char **argv) {
+    init_cachestate_masks(12, 6);
     int failed_tests = 0;
-    _test(test_get_cache_set_number, "test_get_cache_set_number");
     _test(test_get_cache_set_state, "test_get_cache_set_state");
     _test(test_get_cache_entry_state, "test_get_cache_entry_state");
     _test(test_set_cache_set_state, "test_set_cache_set_state");

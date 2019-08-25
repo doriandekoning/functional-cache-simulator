@@ -123,9 +123,10 @@ int run_coordinator(int world_size, char* input_file) { //TODO rename to pipe
 			       amount_packages_read);
 			break;
 		}
-
-	        int cacheSetNumber = (tmp_access->address >> 6) % (2 << 13);
-	        int worker = cacheSetNumber%(world_size-1) + 1; // Add 1 to offset the rank of the coordinator
+		//Shift to right 6 bits to remove tag, index is 13 bits
+		//therefore the modulus
+	        int index = (tmp_access->address >> 6) % (2 << 13);
+	        int worker = index%(world_size-1) + 1; // Add 1 to offset the rank of the coordinator
 	        bool shouldSend = store_msg(worker, tmp_access);
 	        total_packets_stored++;
 	        if(shouldSend) {
@@ -138,7 +139,7 @@ int run_coordinator(int world_size, char* input_file) { //TODO rename to pipe
 			printf("Could not read cr3 change!\n");
 			break;
 		}
-		printf("New cr3:%lx\n", tmp_cr3_change->new_cr3);
+		//printf("New cr3:%lx\n", tmp_cr3_change->new_cr3);
 	}else{
 		printf("Encountered unknown event\n");
 	}

@@ -16,8 +16,15 @@ extern const int BUS_REQUEST_READX;
 extern const int BUS_REQUEST_UPGR;
 extern const int BUS_REQUEST_FLUSH;
 
+extern uint64_t ADDRESS_OFFSET_MASK;
+extern uint64_t ADDRESS_TAG_MASK;
+extern uint64_t ADDRESS_INDEX_MASK;
+#define ADDRESS_TAG(addr)       ((addr & ADDRESS_TAG_MASK) >> 18) //TODO make configurable (also 6)
+#define ADDRESS_OFFSET(addr)    ((addr & ADDRESS_OFFSET_MASK))
+#define ADDRESS_INDEX(addr)     ((addr & ADDRESS_INDEX_MASK) >> 6)
+
 struct CacheEntry {
-	uint64_t address; //TODO rename cacheline
+	uint64_t tag;
 	int state;
 	struct CacheEntry* next;
 	struct CacheEntry* prev;
@@ -41,13 +48,14 @@ typedef struct CacheEntry* CacheSetState;
 typedef struct CacheEntry** CacheState;
 
 
-uint64_t get_cache_set_number(uint64_t cache_line);
-CacheSetState get_cache_set_state(CacheState state, uint64_t cache_line, uint64_t cpu);
-CacheEntryState get_cache_entry_state(CacheSetState state, uint64_t cache_line);
-void set_cache_set_state(CacheState state, CacheSetState new, uint64_t cache_line, uint64_t cpu);
+void init_cachestate_masks(int indexsize, int offsetsize);
+uint64_t get_index(uint64_t address);
+CacheSetState get_cache_set_state(CacheState state, uint64_t address, uint64_t cpu);
+CacheEntryState get_cache_entry_state(CacheSetState state, uint64_t address);
+void set_cache_set_state(CacheState state, CacheSetState new, uint64_t address, uint64_t cpu);
 struct statechange get_msi_state_change(int current_state, bool write);
 struct statechange get_msi_state_change_by_bus_request(int current_state, int bus_request);
-CacheSetState apply_state_change(CacheSetState cacheSetState, struct CacheEntry* entry, struct statechange statechange, uint64_t cache_line);
+CacheSetState apply_state_change(CacheSetState cacheSetState, struct CacheEntry* entry, struct statechange statechange, uint64_t address);
 
 
 // Functions on a cachelinestate
