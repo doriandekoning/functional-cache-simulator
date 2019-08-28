@@ -1,6 +1,7 @@
 #include <mpi.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
 
 #include "worker.h"
 #include "config.h"
@@ -38,7 +39,7 @@ int run_worker(int amount_workers) {
 		return err;
 	}
 	printf("Allocating a state array of size:%d * %lu\n", AMOUNT_SIMULATED_PROCESSORS * (CACHE_SIZE/amount_workers), sizeof(struct CacheEntry*));
-
+	int* cr3_values = calloc(AMOUNT_SIMULATED_PROCESSORS, sizeof(uint64_t));
 	CacheState states = calloc(AMOUNT_SIMULATED_PROCESSORS * (CACHE_SIZE/amount_workers), sizeof(struct CacheEntry*));
 	if(states == NULL) {
 		printf("Cannot allocate memory for states\n");
@@ -74,8 +75,10 @@ int run_worker(int amount_workers) {
 			cache_access* msg = &messages[i];
 			total_accesses++;
 			if(msg->type == CR3_UPDATE){
+				cr3_values[msg->cpu] = msg->address;
 				continue; //TODO handle
 			}
+			get_physical_address(msg->address, cr3_values[msg->cpu], msg->cpu);
 			CacheSetState set_state =
 			get_cache_set_state(states, msg->address, msg->cpu);
 
@@ -122,4 +125,9 @@ int run_worker(int amount_workers) {
 	free(states);
 
 	return 0;
+}
+
+uint64_t get_physical_address(uint64_t address, uint64_t cr3_value, int cpu) {
+	
+	return address;
 }
