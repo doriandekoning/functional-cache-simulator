@@ -8,10 +8,12 @@
 #include "pipereader.h"
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdint.h>
 
 
 
 
+#define READ_UINT8_FROM_PIPE(variable) if(fread(&variable, 1, 1, pipe) != 1) {printf("Could not read uint8 from pipe\n"); return -1;}
 
 #define READ_UINT64_FROM_PIPE(variable) if(fread(&variable, 1, 8, pipe) != 8) {printf("Could not read from pipe!\n");return -1;}
 #define READ_UINT32_FROM_PIPE(variable) if(fread(&variable, 1, 4, pipe) != 4) {printf("Could not read from pipe!\n");return -1;}
@@ -46,15 +48,11 @@ int read_header(FILE * pipe) {
 
 int get_cache_access(FILE* pipe, cache_access* access) {
 	READ_UINT64_FROM_PIPE(access->tick);
-	uint32_t rec_len; //Unused
-	READ_UINT32_FROM_PIPE(rec_len)
-	uint32_t trace_pid; //Unused
-	READ_UINT32_FROM_PIPE(trace_pid)
 	READ_UINT64_FROM_PIPE(access->cpu)
 	READ_UINT64_FROM_PIPE(access->address)
 	struct qemu_mem_info info;
-	READ_UINT64_FROM_PIPE(info)
-	uint64_t size =  (1 << (info.size_shift));
+	READ_UINT8_FROM_PIPE(info)
+	uint8_t size =  (1 << (info.size_shift));
 	if(size > 64) {printf("Size larger than cachelinesize!");}
 	access->type = info.store ? CACHE_WRITE : CACHE_READ;
 	return 0;
@@ -65,29 +63,30 @@ int get_cr3_change(FILE* pipe, cr3_change* change){
 	uint32_t rec_len;//Unused
 	READ_UINT32_FROM_PIPE(rec_len);
 	uint32_t trace_pid;//Unused
-	READ_UINT32_FROM_PIPE(trace_pid);
+//	READ_UINT32_FROM_PIPE(trace_pid);
 	READ_UINT64_FROM_PIPE(change->cpu);
 	READ_UINT64_FROM_PIPE(change->new_cr3);
 	return 0;
 }
 
-int get_next_event_id(FILE* pipe) {
+uint8_t get_next_event_id(FILE* pipe) {
     do{
-        uint64_t record_type;
-        READ_UINT64_FROM_PIPE(record_type)
+        uint8_t record_type;
+        READ_UINT8_FROM_PIPE(record_type)
         if( record_type == 0) {
+		printf("Found mapping\n");
 		uint64_t event_id;
-		READ_UINT64_FROM_PIPE(event_id)
+		READ_UINT8_FROM_PIPE(event_id)
 		uint32_t length;
 		READ_UINT32_FROM_PIPE(length)
 		char* text = malloc(length);
 		READ_STRING_FROM_PIPE(text, length)
         } else if (record_type == 1) {
-		uint64_t event_id;
-		READ_UINT64_FROM_PIPE(event_id)
+		uint8_t event_id;
+		READ_UINT8_FROM_PIPE(event_id)
 		return event_id;
         }   else {
-            printf("Unknown record type encountered!\n");
+            printf("Unknown record type: %lx encountered!\n", record_type);
             return -1;
         }
     }while(true);

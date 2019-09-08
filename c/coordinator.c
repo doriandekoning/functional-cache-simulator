@@ -25,7 +25,6 @@ clock_t before_waited;
 
 int* cpu_id_map;
 
-
 //TODO rank == (worldsize-1) is master
 
 bool store_msg(int worker, cache_access* access) {
@@ -73,6 +72,7 @@ int run_coordinator(int world_size, char* input_file) { //TODO rename to pipe
     for(int i = 0; i < AMOUNT_SIMULATED_PROCESSORS; i++) {
         cpu_id_map[i] = INT_MAX;
     }
+
 
     MPI_Datatype mpi_access_type;
     int err = get_mpi_access_datatype(&mpi_access_type);

@@ -1,6 +1,16 @@
 
 #ifndef PIPEREADER_H
 #define PIPEREADER_H
+#include <stdint.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include "cachestate.h"
+
+#include <stdint.h>
+#include <stdbool.h>
+#include <stdio.h>
+
+#include "cachestate.h"
 
 #define PIPE_OPEN_ERROR 1
 #define PIPE_READ_ERROR 2
@@ -24,7 +34,7 @@ typedef struct cr3_change_t {
 int read_header(FILE * pipe);
 int get_cache_access(FILE* pipe, cache_access* access);
 int get_cr3_change(FILE* pipe, cr3_change* update);
-int get_next_event_id(FILE* pipe);
+uint8_t get_next_event_id(FILE* pipe);
 
 
 #endif //PIPEREADER_H

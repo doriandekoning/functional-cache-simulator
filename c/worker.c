@@ -7,30 +7,32 @@
 #include "config.h"
 #include "mpi_datatype.h"
 #include "cachestate.h"
-
+#include "pagetable.h"
 
 
 int amount_writebacks = 0;
 int amount_misses = 0;
+int amount_pagetables = 0;
 
-cr3_list* cr3s = NULL;
+struct cr3_list* cr3s = NULL;
 
 pagetable* find_pagetable_for_cr3(uint64_t cr3) {
-	cr3_list* curCr3 = cr3s;
-	cr3_list* prevCr3 = NULL;
+	struct cr3_list* curCr3 = cr3s;
 	while(curCr3 != NULL) {
 		if( curCr3->cr3_value == cr3) {
 			return curCr3->pagetable;
 		}
-		prevCr3 = curCr3;
 		curCr3 = curCr3->next;
 	}
-	curCr3->next = malloc(sizeof(cr3_list_t));
-	curCr3->next->cr3_value = cr3;
-	curCr3->next->pagettable = malloc(sizeof(pagetable));
-	curCr3->next->pagetable->levels = 3;
-	curCr3-.next->pagetable->addressLength = 54};
-	return curCr3->next->pagetable;
+	struct cr3_list* newCr3 = calloc(1, sizeof(struct cr3_list));
+	newCr3->cr3_value = cr3;
+	newCr3->next = cr3s;
+	newCr3->pagetable = calloc(1, sizeof(pagetable));
+	newCr3->pagetable->levels = 3;
+	newCr3->pagetable->addressLength = 54;
+	cr3s = newCr3;
+	amount_pagetables++;
+	return newCr3->pagetable;
 }
 
 
@@ -70,7 +72,8 @@ int run_worker(int amount_workers) {
 	uint32_t total_accesses = 0;
 	uint32_t total_batches = 0;
 	bool last_batch = false;
-	pagetable* curPagetable  = find_pagetable_for_cr3(0); //TODO always 0?
+	pagetable* curPagetable = find_pagetable_for_cr3(0); //TODO always 0?
+	printf("Allocated initial pagetable!\n");
 	do{
 		MPI_Status status;//. = malloc(sizeof(MPI_Status));
 		int result;
@@ -95,18 +98,14 @@ int run_worker(int amount_workers) {
 		total_batches++;
 		for(int i = 0; i < count; i++) {
 			cache_access* msg = &messages[i];
-			total_accesses++;
 			if(msg->type == CR3_UPDATE){
 				cr3_values[msg->cpu] = msg->address;
 				curPagetable = find_pagetable_for_cr3(msg->address);
-				continue; //TODO handle
+				continue;
 			}
 			uint64_t physaddress = vaddr_to_phys(curPagetable, msg->address);
-			CacheSetState set_state =
-			get_cache_set_state(states, physaddress, msg->cpu);
-
-			CacheEntryState entry_state =
-				get_cache_entry_state(set_state, physaddress);
+			CacheSetState set_state = get_cache_set_state(states, physaddress, msg->cpu);
+			CacheEntryState entry_state = get_cache_entry_state(set_state, physaddress);
 			int cur_state = STATE_INVALID;
 			if(entry_state != NULL) {
 				cur_state = entry_state->state;
@@ -116,6 +115,7 @@ int run_worker(int amount_workers) {
 			new = check_eviction(new);
 			set_cache_set_state(states, new, physaddress, msg->cpu);
 
+			total_accesses++;
 			// Update state in other cpus
 			bool found_in_other_cpu = false;
 			for(int i = 0; i < AMOUNT_SIMULATED_PROCESSORS; i++) {
@@ -144,7 +144,7 @@ int run_worker(int amount_workers) {
 	printf("Amount of accesses:\t%u\n", total_accesses);
 	printf("Amount writebacks:\t%d\n", amount_writebacks);
 	printf("Amount misses:\t%d\n", amount_misses);
-
+	printf("Amount of pagetables:\t%d\n", amount_pagetables);
 	free(states);
 
 	return 0;

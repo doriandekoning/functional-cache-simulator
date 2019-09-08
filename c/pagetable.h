@@ -26,7 +26,7 @@ static inline uint64_t pages_per_level(pagetable* table) {
 }
 
 static inline uint64_t get_level_tag(pagetable* table, uint64_t address, uint64_t level) {
-	uint64_t bpl =  bits_per_level(table);
+	uint64_t bpl = bits_per_level(table);
 	return ((address >> (uint64_t)12) >> (level*bpl)) % ((uint64_t)1 << bpl);
 }
 

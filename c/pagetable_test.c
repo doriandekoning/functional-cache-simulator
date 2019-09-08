@@ -2,14 +2,10 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include "test.h"
+
 
 int tests_run = 0;
-
-#define FAIL() printf("\n Failure in %s() line %d\n", __func__, __LINE__);
-#define _assert(test) do {if (!(test)) { FAIL(); return 1; } } while(0)
-#define _assertEquals(expected, actual) do {if(expected != actual) { printf("Expected was: %llu but actual was: %llu at line %d\n", (uint64_t)expected, (uint64_t)actual, __LINE__); return 1;}} while(0)
-
-#define _test(test, testname) do {int result = test(); failed_tests+= result; if(result) { printf("Failed %s!\n", testname);}else{printf("Passed %s\n", testname);}} while(0)
 
 int test_bits_per_level() {
 	pagetable table = {.levels = 2, .addressLength = 8};
@@ -79,15 +75,23 @@ int test_map_two_levels_single_two_entry() {
 	return 0;
 }
 
-int test_map_four_levels_single_two_entry() {
+int test_map_four_levels_two_entries() {
 	pagetable table = {.levels = 4, .addressLength = 32};
 	nextfreephys = (1 << 12);
 	const uint64_t address1 = (1234) + (2 << 18);
-	const uint64_t address2 = (4321) + (2 << 18);
+	const uint64_t address2 =  (((uint64_t)4321 << 16) + ((uint64_t)1221 << 8)  + ((uint64_t)1234)) << 12;
 	_assertEquals((1 << 12), vaddr_to_phys(&table, address1));
 	_assertEquals(2*(1 << 12), vaddr_to_phys(&table, address2));
 	_assertEquals((1 << 12), vaddr_to_phys(&table, address1));
 	_assertEquals(2*(1 << 12), vaddr_to_phys(&table, address2));
+	return 0;
+}
+
+int test_multilevel() {
+	pagetable table = {.levels = 3, .addressLength = 54};
+	const uint64_t addr = (uint64_t)18446741874686299840;
+	printf("%lx, %lx, %lx, %lx\n", addr, addr  >> 12, (addr >> 12) % (1<<18), (addr >> 30) % ( 1 << 18));
+	_assertEquals( (1 << 12), vaddr_to_phys(&table, addr));
 	return 0;
 }
 
@@ -98,6 +102,7 @@ int test_get_level_tag() {
 	_assertEquals(4321, get_level_tag(&table, address, 1));
 	return 0;
 }
+
 
 
 int main(int argc, char **argv) {
@@ -111,7 +116,8 @@ int main(int argc, char **argv) {
 	_test(test_map_two_levels_single_entry, "test_map_two_levels_single_entry");
 	_test(test_get_level_tag, "test_get_level_tag");
 	_test(test_map_two_levels_single_two_entry, "test_map_two_levels_single_two_entry");
-	_test(test_map_four_levels_single_two_entry, "test_map_four_levels_single_two_entry");
+	_test(test_map_four_levels_two_entries, "test_map_four_levels_two_entries");
+	_test(test_multilevel, "test_multilevel");
 	if(failed_tests == 0 ){
 		printf("All tests passed!\n");
 	} else {
@@ -119,4 +125,3 @@ int main(int argc, char **argv) {
 	}
 	return 0;
 }
-
