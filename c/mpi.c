@@ -32,6 +32,7 @@ int main(int argc, char** argv) {
 	if(world_rank == 0){
 		if(argc < 2) {
 			printf("First argument specifies the input file location! But only %d arguments where provided\n", argc);
+			return 1;
 		}
 		run_coordinator(world_size, argv[1]);
 	}else {
