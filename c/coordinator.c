@@ -2,6 +2,9 @@
 #include "config.h"
 #include <mpi.h>
 
+// For mkfifo
+#include <sys/types.h>
+#include <sys/stat.h>
 
 
 #include <stdlib.h>
@@ -83,7 +86,14 @@ int run_coordinator(int world_size, char* input_file) { //TODO rename to pipe
     //Setup access
     stored_access_counts = calloc(world_size-1, sizeof(int));
     stored_accesses = calloc((world_size) * MESSAGE_BATCH_SIZE, sizeof(cache_access));
-
+    struct stat buffer;
+    if( stat(input_file, &buffer) != 0 ){
+	printf("File not found creating a pipe\n");
+	int create_pipe_result = mkfifo(input_file, 0666);
+	if(create_pipe_result) {
+	  printf("Error occured creating pipe: %d\n", create_pipe_result);
+	}
+    }
     pipe = fopen(input_file, "r+");
     if(!pipe) {
         printf("Error occured opening file\n");
