@@ -107,7 +107,7 @@ int run_coordinator(int world_size, char* input_file) { //TODO rename to pipe
 
 	amount_packages_read++;
 	int next_eventid = get_next_event_id(pipe);
-	if(next_eventid < 0) {
+	if(next_eventid == (uint8_t)-1) {
 		printf("Could not get next eventid!\n");
 		break;
 	}
@@ -151,7 +151,7 @@ int run_coordinator(int world_size, char* input_file) { //TODO rename to pipe
 		}
 		//printf("New cr3:%lx\n", tmp_cr3_change->new_cr3);
 	}else{
-		printf("Encountered unknown event\n");
+		printf("Encountered unknown event: %d\n", next_eventid);
 	}
    }
 	free(tmp_access);

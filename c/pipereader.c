@@ -60,10 +60,6 @@ int get_cache_access(FILE* pipe, cache_access* access) {
 
 int get_cr3_change(FILE* pipe, cr3_change* change){
 	READ_UINT64_FROM_PIPE(change->tick);
-	uint32_t rec_len;//Unused
-	READ_UINT32_FROM_PIPE(rec_len);
-	uint32_t trace_pid;//Unused
-//	READ_UINT32_FROM_PIPE(trace_pid);
 	READ_UINT64_FROM_PIPE(change->cpu);
 	READ_UINT64_FROM_PIPE(change->new_cr3);
 	return 0;
@@ -73,17 +69,16 @@ uint8_t get_next_event_id(FILE* pipe) {
     do{
         uint8_t record_type;
         READ_UINT8_FROM_PIPE(record_type)
+	uint8_t event_id;
+	READ_UINT8_FROM_PIPE(event_id)
         if( record_type == 0) {
-		printf("Found mapping\n");
-		uint64_t event_id;
-		READ_UINT8_FROM_PIPE(event_id)
 		uint32_t length;
 		READ_UINT32_FROM_PIPE(length)
 		char* text = malloc(length);
 		READ_STRING_FROM_PIPE(text, length)
+//		printf("Found mapping: %lu->", event_id);
+//		printf("%.*s\n", length, text);
         } else if (record_type == 1) {
-		uint8_t event_id;
-		READ_UINT8_FROM_PIPE(event_id)
 		return event_id;
         }   else {
             printf("Unknown record type: %lx encountered!\n", record_type);
