@@ -19,6 +19,19 @@
 #define READ_UINT32_FROM_PIPE(variable) if(fread(&variable, 1, 4, pipe) != 4) {printf("Could not read from pipe!\n");return -1;}
 #define READ_STRING_FROM_PIPE(variable, length) if(fread(variable, 1, length, pipe) != length) {printf("Could not read from pipe!\n");return -1;}
 
+#define INFO_SIZE_SHIFT_MASK 0x7 /* size shift mask */
+#define INFO_SIGN_EXTEND_MASK (1ULL << 3)    /* sign extended (y/n) */
+#define INFO_BIG_ENDIAN_MASK (1ULL << 4)    /* big endian (y/n) */
+#define INFO_STORE_MASK (1ULL << 5)    /* store (y/n) */
+
+struct qemu_mem_info* get_mem_info(uint8_t raw_info) {
+	struct qemu_mem_info* info = malloc(sizeof(struct qemu_mem_info));
+	info->size_shift = raw_info & INFO_SIZE_SHIFT_MASK;
+	info->store = raw_info & INFO_STORE_MASK;
+	info->endianness = raw_info & INFO_BIG_ENDIAN_MASK;
+	info->sign_extend = raw_info & INFO_SIGN_EXTEND_MASK;
+	return info;
+}
 
 int read_header(FILE * pipe) {
   // Read eventid
@@ -49,19 +62,24 @@ int read_header(FILE * pipe) {
 int get_cache_access(FILE* pipe, cache_access* access) {
 	READ_UINT64_FROM_PIPE(access->tick);
 	READ_UINT64_FROM_PIPE(access->cpu)
-	READ_UINT64_FROM_PIPE(access->address)
-	struct qemu_mem_info info;
-	READ_UINT8_FROM_PIPE(info)
-	uint8_t size =  (1 << (info.size_shift));
-	if(size > 64) {printf("Size larger than cachelinesize!");}
-	access->type = info.store ? CACHE_WRITE : CACHE_READ;
+	READ_UINT64_FROM_PIPE(access->address);
+	uint8_t info_int;
+	struct qemu_mem_info* info;
+	READ_UINT8_FROM_PIPE(info_int);
+	info = get_mem_info(info_int);
+	access->type = info->store ? CACHE_WRITE : CACHE_READ;
+	access->size = (1 << info->size_shift);
+	if(info->store) {
+		READ_UINT64_FROM_PIPE(access->data);
+	}
 	return 0;
 }
 
-int get_cr3_change(FILE* pipe, cr3_change* change){
+int get_cr_change(FILE* pipe, cr_change* change){
 	READ_UINT64_FROM_PIPE(change->tick);
 	READ_UINT64_FROM_PIPE(change->cpu);
-	READ_UINT64_FROM_PIPE(change->new_cr3);
+	READ_UINT8_FROM_PIPE(change->register_number);
+	READ_UINT64_FROM_PIPE(change->new_value);
 	return 0;
 }
 
@@ -76,8 +94,6 @@ uint8_t get_next_event_id(FILE* pipe) {
 		READ_UINT32_FROM_PIPE(length)
 		char* text = malloc(length);
 		READ_STRING_FROM_PIPE(text, length)
-//		printf("Found mapping: %lu->", event_id);
-//		printf("%.*s\n", length, text);
         } else if (record_type == 1) {
 		return event_id;
         }   else {

@@ -13,8 +13,14 @@
 
 int main(int argc, char** argv) {
 	init_cachestate_masks(12, 6);
-	MPI_Init(&argc, &argv);
-
+	int provided;
+	printf("THread!\n");
+	MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
+//	MPI_Init(&argc, &argv);
+	printf("%p\n", argv[argc]);
+	printf("TEST!\n");
+	MPI_Finalize();
+	return 0;
 	int world_size;
 	MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 	if(world_size<= 1) {
@@ -30,11 +36,13 @@ int main(int argc, char** argv) {
 
 
 	if(world_rank == 0){
-		if(argc < 2) {
-			printf("First argument specifies the input file location! But only %d arguments where provided\n", argc);
+		if(argc < 3) {
+			printf("First argument should be the path of the pagetable dump\n");
+			printf("Second argument specifies the input file location!\n");
+			printf("But only %d arguments where provided\n", argc);
 			return 1;
 		}
-		run_coordinator(world_size, argv[1]);
+		run_coordinator(world_size, argv[1], argv[2]);
 	}else {
 		run_worker(world_size-1);
 	}

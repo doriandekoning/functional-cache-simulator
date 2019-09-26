@@ -18,7 +18,7 @@ extern const int BUS_REQUEST_FLUSH;
 
 #define CACHE_WRITE (uint8_t)0
 #define CACHE_READ  (uint8_t)1
-#define CR3_UPDATE (uint8_t)2
+#define CR_UPDATE (uint8_t)2
 
 
 extern uint64_t ADDRESS_OFFSET_MASK;
@@ -45,6 +45,8 @@ typedef struct access_s {
 	uint64_t tick;
 	uint64_t cpu;
 	uint8_t type;
+	uint64_t data;
+	uint8_t size;
 } cache_access;
 
 

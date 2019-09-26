@@ -9,13 +9,14 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <dirent.h>
 #include <stdbool.h>
 #include <time.h>
 #include "cachestate.h"
 #include "mpi_datatype.h"
 #include "pipereader.h"
-
-
+#include "string.h"
+#include "memory.h" //TODO organize imports
 
 int* stored_access_counts;
 cache_access* stored_accesses;
@@ -25,6 +26,54 @@ clock_t time_waited = 0;
 clock_t before_waited;
 
 int* cpu_id_map;
+uint64_t* cr;
+
+struct pagetable_list* pagetables; //TODO make cpu dependent
+struct pagetable* current_pagetable = NULL;
+uint64_t curCr3 = 0;
+
+struct pagetable_list* read_pagetables(char* path) {
+	DIR* d = opendir(path);
+	struct dirent *dir;	
+	if(d) {
+		while((dir = readdir(d)) != NULL) {
+			if(!strcmp(dir->d_name, ".") || !strcmp(dir->d_name, "..")){
+				continue;
+			}
+			printf("%s\n", dir->d_name);
+			uint64_t cr3;
+			char fPath[512]; 
+			strcpy(fPath, path);
+			strcat(fPath, "/");
+			strcat(fPath, dir->d_name);
+			pagetable* newTable = read_pagetable(fPath, &cr3);
+			if(newTable == NULL){
+				printf("Could not read pagetable:%s\n", &fPath);
+				return NULL;
+			}
+			printf("%lx\n", cr3);
+			struct pagetable_list* newList = malloc(sizeof(struct pagetable_list));
+			newList->next = pagetables;
+			newList->pagetable = newTable;
+			newList->cr3_value =cr3;
+			pagetables = newList;
+		}
+		closedir(d);
+	}
+
+	return pagetables;
+}
+
+pagetable* find_pagetable_for_cr3(uint64_t cr3) {
+        struct pagetable_list* curPagetable = pagetables;
+        while(curPagetable != NULL) {
+                if( curPagetable->cr3_value == cr3) {
+                        return curPagetable->pagetable;
+                }
+                curPagetable = curPagetable->next;
+        }
+        return NULL;
+}
 
 //TODO rank == (worldsize-1) is master
 
@@ -66,14 +115,19 @@ int map_cpu_id(int cpu_id) {
 }
 
 
-int run_coordinator(int world_size, char* input_file) { //TODO rename to pipe
+int run_coordinator(int world_size, char* input_pagetables, char* input_file) { //TODO rename to pipe
     FILE *pipe;
     unsigned char buf[4048];
+//    struct memory* mem = init_memory();
     cpu_id_map = malloc(sizeof(int)*AMOUNT_SIMULATED_PROCESSORS); //TODO do mapping on worker
     for(int i = 0; i < AMOUNT_SIMULATED_PROCESSORS; i++) {
         cpu_id_map[i] = INT_MAX;
     }
+    if(input_pagetables != NULL) {
+	pagetables = read_pagetables(input_pagetables);
+    }
 
+    cr = malloc(5*sizeof(uint64_t));
 
     MPI_Datatype mpi_access_type;
     int err = get_mpi_access_datatype(&mpi_access_type);
@@ -93,6 +147,9 @@ int run_coordinator(int world_size, char* input_file) { //TODO rename to pipe
     int total_batches = 0;
     int total_packets_stored = 0;
     int amount_packages_read = 0;
+    int pagetable_notfound = 0;
+    int unable_to_map = 0;
+    int total_mem_access = 0;
     start = clock();
 
     if(read_header(pipe) != 0) {
@@ -100,22 +157,42 @@ int run_coordinator(int world_size, char* input_file) { //TODO rename to pipe
         return 2;
     }
     cache_access* tmp_access = malloc(sizeof(cache_access));
-    cr3_change* tmp_cr3_change = malloc(sizeof(cr3_change));
+    cr_change* tmp_cr_change = malloc(sizeof(cr_change));
     while(true){
 
 	amount_packages_read++;
-	int next_eventid = get_next_event_id(pipe);
+	uint8_t next_eventid = get_next_event_id(pipe);
 	if(next_eventid == (uint8_t)-1) {
 		printf("Could not get next eventid!\n");
 		break;
 	}
-	if(next_eventid == 67) {
+	if(next_eventid == 67 | next_eventid == 69) {
+		total_mem_access++;
 		//Cache access
 		if(get_cache_access(pipe, tmp_access)){
 			printf("Could not read cache access!\n");
 			break;
 		}
 	        tmp_access->cpu = map_cpu_id(tmp_access->cpu);
+		//TODO check if paging is enabled using cr0 and cr4 values if
+		//disabled discard the access for now (should handle it somehow
+		//in the future)
+		if(current_pagetable == NULL) {
+			pagetable_notfound++;
+			continue;
+		}
+//		tmp_access->address = vaddr_to_phys(current_pagetable, tmp_access->address);
+//		if(tmp_access->address == 0 ){
+//			unable_to_map++;
+//			continue;
+//		}
+/*		if(tmp_access->type == CACHE_WRITE) {
+			int written = write(mem, tmp_access->address, tmp_access->size, (uint8_t*)&tmp_access->data);
+			if(written != tmp_access->size){
+				printf("Error writing to simulated memory!\n");
+				return 0;
+			}
+		}*/
 		// printf("{addr:%llu,tick:%llu,cpu:%llu,write:%d}\n", tmp_access->address, tmp_access->tick, tmp_access->cpu, tmp_access->write);
 
 		if(amount_packages_read > SIMULATION_LIMIT) {//TODO also in else
@@ -131,41 +208,48 @@ int run_coordinator(int world_size, char* input_file) { //TODO rename to pipe
 	            send_accesses(worker, mpi_access_type);
 	        }
 
-	}else if(next_eventid == 68) {
-		if(get_cr3_change(pipe, tmp_cr3_change)) {
-			printf("Could not read cr3 change!\n");
+	}else if(next_eventid == 70) {
+		if(get_cr_change(pipe, tmp_cr_change)) {
+			printf("Could not read cr change!\n");
 			break;
 		}
-		tmp_access->tick = tmp_cr3_change->tick;
-		tmp_access->address = tmp_cr3_change->new_cr3;
-		tmp_access->cpu = map_cpu_id(tmp_cr3_change->cpu);
-		tmp_access->type = CR3_UPDATE;
-		total_packets_stored++;
-		for(int i = 0; i < world_size -1; i++){//TODO remove duplicate code
-			if(store_msg(i+1, tmp_access)) {
-				total_batches++;
-				send_accesses(i+1, mpi_access_type);
-			}
+		if(tmp_cr_change->register_number > 4) {
+			printf("Cr value is larger than 4: %x!\n", tmp_cr_change->register_number);
+			exit(1);
 		}
-		//printf("New cr3:%lx\n", tmp_cr3_change->new_cr3);
+		//Update current_pagetable
+		if(tmp_cr_change->register_number == 3) {
+			current_pagetable = find_pagetable_for_cr3(cr[3] & 0x3fffffffff000ULL);
+
+		}
+		cr[tmp_cr_change->register_number] = tmp_cr_change->new_value;
 	}else{
 		printf("Encountered unknown event: %d\n", next_eventid);
 	}
+	if(unable_to_map != 0 && total_packets_stored%100000 == 0 ) {
+	    printf("Total amount of trace events:\t%d\n", amount_packages_read);
+	    printf("Total batches send:\t%d\n", total_batches);
+	    printf("Pagetable not found: \t%dtimes\n", pagetable_notfound);
+	    printf("Unable to map:\t%dtimes\n", unable_to_map);
+	    printf("Percentage of memory accesses not mappable:%lu\n", total_mem_access/unable_to_map);
+	}
    }
 	free(tmp_access);
-	free(tmp_cr3_change);
+	free(tmp_cr_change);
 	for(int i = 1; i < world_size; i++) {
 		send_accesses(i, mpi_access_type);
 	}
 
     end = clock();
+    //TODO [MASTER] and [WORKER:index] in front of all printfs
     printf("Time used by coordinator: %f\n", (double)(end-start)/CLOCKS_PER_SEC);
     printf("Time spend waiting for communication: %f\n", (double)time_waited/CLOCKS_PER_SEC);
     printf("Time spend waiting:%f\n", (double)(time_waited/(end-start)));
-
-    printf("Total messages send:\t%d\n", amount_packages_read);
+    printf("Total amount of trace events:\t%d\n", amount_packages_read);
     printf("Total packets stored:\t%d\n", total_packets_stored);
     printf("Total batches send:\t%d\n", total_batches);
+    printf("Pagetable not found: \t%dtimes\n", pagetable_notfound);
+    printf("Unable to map:\t%dtimes\n", unable_to_map);
     return 0;
 }
 

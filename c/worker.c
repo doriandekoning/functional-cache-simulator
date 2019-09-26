@@ -14,28 +14,6 @@ int amount_writebacks = 0;
 int amount_misses = 0;
 int amount_pagetables = 0;
 
-struct cr3_list* cr3s = NULL;
-
-pagetable* find_pagetable_for_cr3(uint64_t cr3) {
-	struct cr3_list* curCr3 = cr3s;
-	while(curCr3 != NULL) {
-		if( curCr3->cr3_value == cr3) {
-			return curCr3->pagetable;
-		}
-		curCr3 = curCr3->next;
-	}
-	struct cr3_list* newCr3 = calloc(1, sizeof(struct cr3_list));
-	newCr3->cr3_value = cr3;
-	newCr3->next = cr3s;
-	newCr3->pagetable = calloc(1, sizeof(pagetable));
-	newCr3->pagetable->levels = 3;
-	newCr3->pagetable->addressLength = 54;
-	cr3s = newCr3;
-	amount_pagetables++;
-	return newCr3->pagetable;
-}
-
-
 CacheSetState check_eviction(CacheSetState state) {
 	int length = list_length(state);
 	if(length > ASSOCIATIVITY) {
@@ -72,8 +50,6 @@ int run_worker(int amount_workers) {
 	uint32_t total_accesses = 0;
 	uint32_t total_batches = 0;
 	bool last_batch = false;
-	pagetable* curPagetable = find_pagetable_for_cr3(0); //TODO always 0?
-	printf("Allocated initial pagetable!\n");
 	do{
 		MPI_Status status;//. = malloc(sizeof(MPI_Status));
 		int result;
@@ -98,37 +74,31 @@ int run_worker(int amount_workers) {
 		total_batches++;
 		for(int i = 0; i < count; i++) {
 			cache_access* msg = &messages[i];
-			if(msg->type == CR3_UPDATE){
-				cr3_values[msg->cpu] = msg->address;
-				curPagetable = find_pagetable_for_cr3(msg->address);
-				continue;
-			}
-			uint64_t physaddress = vaddr_to_phys(curPagetable, msg->address);
-			CacheSetState set_state = get_cache_set_state(states, physaddress, msg->cpu);
-			CacheEntryState entry_state = get_cache_entry_state(set_state, physaddress);
+			CacheSetState set_state = get_cache_set_state(states, msg->address, msg->cpu);
+			CacheEntryState entry_state = get_cache_entry_state(set_state, msg->address);
 			int cur_state = STATE_INVALID;
 			if(entry_state != NULL) {
 				cur_state = entry_state->state;
 			}
 			struct statechange state_change = get_msi_state_change(cur_state, msg->type);
-			CacheSetState new = apply_state_change(set_state, entry_state, state_change, physaddress);
+			CacheSetState new = apply_state_change(set_state, entry_state, state_change, msg->address);
 			new = check_eviction(new);
-			set_cache_set_state(states, new, physaddress, msg->cpu);
+			set_cache_set_state(states, new, msg->address, msg->cpu);
 
 			total_accesses++;
 			// Update state in other cpus
 			bool found_in_other_cpu = false;
 			for(int i = 0; i < AMOUNT_SIMULATED_PROCESSORS; i++) {
 				if(i != msg->cpu) {
-					CacheSetState cache_set_state = get_cache_set_state(states, physaddress, i);
-					CacheEntryState cache_entry_state = get_cache_entry_state(cache_set_state, physaddress);
+					CacheSetState cache_set_state = get_cache_set_state(states, msg->address, i);
+					CacheEntryState cache_entry_state = get_cache_entry_state(cache_set_state, msg->address);
 					if(cache_entry_state != NULL && cache_entry_state->state != STATE_INVALID) {//TODO check if we need to do this with invalid
 						found_in_other_cpu = true;
 						bool flush = false;
 						struct statechange new_state = get_msi_state_change_by_bus_request(cache_entry_state->state, state_change.bus_request);
-						CacheSetState new = apply_state_change(cache_set_state, cache_entry_state, state_change, physaddress);
+						CacheSetState new = apply_state_change(cache_set_state, cache_entry_state, state_change, msg->address);
 						new = check_eviction(cache_set_state);
-						set_cache_set_state(states, new, physaddress, msg->cpu);
+						set_cache_set_state(states, new, msg->address, msg->cpu);
 					}
 				}
 			}
