@@ -4,6 +4,7 @@
 
 #include "mpi_datatype.h"
 #include "cachestate.h"
+#include "pipereader.h"
 
 int get_mpi_access_datatype(MPI_Datatype* mpi_access_type){
 	//Setup mpi type for struct access
@@ -26,3 +27,4 @@ int get_mpi_access_datatype(MPI_Datatype* mpi_access_type){
 	}
 	return 0;
 }
+

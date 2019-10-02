@@ -1,7 +1,9 @@
 #include "pipereader.h"
 #include "cachestate.h"
 #include <stdio.h>
-#include<stdlib.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #define PG_MASK (1 << 31)
 #define PE_MASK (1 << 0)
@@ -11,18 +13,17 @@ int main(int argc, char **argv) {
 		return 10;
 	}
 
-	FILE *in;
+	FILE* in;
 	unsigned char buf[4048];
-	in = fopen(argv[1], "r+");
+	in = fopen(argv[1], "w");
 	if(!in){
 		printf("Could not open file\n");
 		return 1;
 	}
-
-	if(read_header(in) != 0) {
-		printf("Unable to read header!\n");
-		return 2;
-	}
+        while(read_header(in) != 0) {
+//              printf("Unable to read header!\n");
+                sleep(1);
+        }
 	uint64_t kernel_reads_64 = 0;
 	uint64_t kernel_reads_other = 0;
 	uint64_t kernel_writes = 0;
@@ -35,8 +36,9 @@ int main(int argc, char **argv) {
 	while(true) {
 		uint8_t next_event_id = get_next_event_id(in);
 		if(next_event_id == (uint8_t)-1) {
-			printf("Could not read eventid!\n");
-			break;
+                        usleep(100000);
+			printf("Sleeping!\n");
+                        continue;
 		}
 		if(next_event_id == 67 || next_event_id == 69) {
 			if(get_cache_access(in, tmp_access)) {
@@ -74,7 +76,7 @@ int main(int argc, char **argv) {
 					paging_enabled=2;
 				}
 			}else if(tmp_cr_change->register_number == 3) {
-				printf("CR3:%lu\n", tmp_cr_change->new_value);
+//				printf("CR3:%lu\n", tmp_cr_change->new_value);
 			}
 		}else {
 			printf("Unknown eventid: %x\n", next_event_id);

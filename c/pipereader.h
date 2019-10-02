@@ -25,6 +25,16 @@ struct qemu_mem_info {
      bool    store      : 1; /* wheter it's a store operation */
 };
 
+
+typedef struct access_s {
+        uint64_t address;
+        uint64_t tick;
+        uint64_t cpu;
+        uint8_t type;
+        uint64_t data;
+        uint8_t size;
+} cache_access;
+
 typedef struct cr_change_t {
     uint64_t tick;
     uint64_t cpu;
@@ -32,7 +42,7 @@ typedef struct cr_change_t {
     uint64_t new_value;
 } cr_change;
 
-int read_header(FILE * pipe);
+int read_header(FILE* pipe);
 int get_cache_access(FILE* pipe, cache_access* access);
 int get_cr_change(FILE* pipe, cr_change* change);
 uint8_t get_next_event_id(FILE* pipe);

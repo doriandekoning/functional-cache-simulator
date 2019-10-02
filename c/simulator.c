@@ -7,24 +7,18 @@
 #include <stdlib.h>
 #include "coordinator.h"
 #include "worker.h"
-
+#include "input_reader.h"
 
 
 
 int main(int argc, char** argv) {
 	init_cachestate_masks(12, 6);
 	int provided;
-	printf("THread!\n");
 	MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
-//	MPI_Init(&argc, &argv);
-	printf("%p\n", argv[argc]);
-	printf("TEST!\n");
-	MPI_Finalize();
-	return 0;
 	int world_size;
 	MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-	if(world_size<= 1) {
-		printf("World size needs to be at least 2\n");
+	if(world_size<= 2) {
+		printf("World size needs to be at least 3\n");
 		return -1;
 	}
 
@@ -35,16 +29,22 @@ int main(int argc, char** argv) {
 	MPI_Get_processor_name(processor_name, &name_len);
 
 
+	if(argc < 5) {
+		printf("First argument should be the path of the pagetable dump\n");
+		printf("Second argument specifies the input file location!\n");
+		printf("Third argument [yn] specifies wether the input is a pipe!\n");
+		printf("Fourth argument specifies the path of the cr3 output file!\n");
+		printf("But only %d arguments where provided\n", argc);
+		return 1;
+	}
+	char* yn = argv[3];
+	bool input_pipe = (yn[0] == 'y');
 	if(world_rank == 0){
-		if(argc < 3) {
-			printf("First argument should be the path of the pagetable dump\n");
-			printf("Second argument specifies the input file location!\n");
-			printf("But only %d arguments where provided\n", argc);
-			return 1;
-		}
-		run_coordinator(world_size, argv[1], argv[2]);
+		run_coordinator(world_size, argv[1], input_pipe, argv[4]);
+	} else if(world_rank == 1) {
+		run_input_reader(argv[2], argv[4], input_pipe);
 	}else {
-		run_worker(world_size-1);
+		run_worker(world_size-2);
 	}
 	MPI_Finalize();
 	return 0;

@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "config.h"
-
+#include "pipereader.h"
 
 extern const int STATE_INVALID;
 extern const int STATE_INVALID;
@@ -39,15 +39,6 @@ struct statechange {
 	int new_state;
 	int bus_request;
 };
-
-typedef struct access_s {
-	uint64_t address;
-	uint64_t tick;
-	uint64_t cpu;
-	uint8_t type;
-	uint64_t data;
-	uint8_t size;
-} cache_access;
 
 
 typedef struct CacheEntry* CacheEntryState;

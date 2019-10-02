@@ -6,17 +6,14 @@
 #include <stdbool.h>
 #include "cachestate.h"
 #include "pipereader.h"
-#include <fcntl.h>
 #include <unistd.h>
 #include <stdint.h>
 
 
 
-
-#define READ_UINT8_FROM_PIPE(variable) if(fread(&variable, 1, 1, pipe) != 1) {printf("Could not read uint8 from pipe\n"); return -1;}
-
-#define READ_UINT64_FROM_PIPE(variable) if(fread(&variable, 1, 8, pipe) != 8) {printf("Could not read from pipe!\n");return -1;}
-#define READ_UINT32_FROM_PIPE(variable) if(fread(&variable, 1, 4, pipe) != 4) {printf("Could not read from pipe!\n");return -1;}
+#define READ_UINT8_FROM_PIPE(variable) if(fread(&variable, 1, 1, pipe) != 1){return -1;}
+#define READ_UINT32_FROM_PIPE(variable) if(fread(&variable, 4, 1, pipe) != 1) {printf("Could not read uint32 from pipe!\n");return -1;}
+#define READ_UINT64_FROM_PIPE(variable) if(fread(&variable, 8, 1, pipe) != 1) {printf("Could not read uint64 from pipe!\n");return -1;}
 #define READ_STRING_FROM_PIPE(variable, length) if(fread(variable, 1, length, pipe) != length) {printf("Could not read from pipe!\n");return -1;}
 
 #define INFO_SIZE_SHIFT_MASK 0x7 /* size shift mask */
@@ -33,7 +30,7 @@ struct qemu_mem_info* get_mem_info(uint8_t raw_info) {
 	return info;
 }
 
-int read_header(FILE * pipe) {
+int read_header(FILE* pipe) {
   // Read eventid
     uint64_t eventid;
     READ_UINT64_FROM_PIPE(eventid)
@@ -72,6 +69,7 @@ int get_cache_access(FILE* pipe, cache_access* access) {
 	if(info->store) {
 		READ_UINT64_FROM_PIPE(access->data);
 	}
+	free(info);
 	return 0;
 }
 
