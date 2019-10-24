@@ -1,116 +1,158 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
-
+#include <stdbool.h>
 #include "pagetable.h"
+#include "memory.h"
+#include "config.h"
 
+#define PG_PRESENT_MASK		(1UL << 0)
+#define PG_PSE_MASK		(1UL << 7)
+#define INDEX_MASK		0x1ffUL
 
-#define PG_PRESENT_MASK		(1 << 0)
-#define PG_PSE_MASK		(1 << 7)
-#define INDEX_MASK		0x1ff
-
-uint64_t vaddr_to_phys(pagetable* table, uint64_t virtaddress) {
-	uint64_t l0_index = (virtaddress >> 48);
+uint64_t vaddr_to_phys(struct memory* mem, uint64_t l1_phys, uint64_t virtaddress) {
 	uint64_t l1_index = (virtaddress >> 39) & INDEX_MASK;
 	uint64_t l2_index = (virtaddress >> 30) & INDEX_MASK;
 	uint64_t l3_index = (virtaddress >> 21) & INDEX_MASK;
 	uint64_t l4_index = (virtaddress >> 12) & INDEX_MASK;
-
 	//L1
-	uint64_t l1_phys = table->physical_addresses[l1_index];
-	if(!(l1_phys & PG_PRESENT_MASK)) {
-		return 0; //Not found
-	}
-	pagetable* l1_entry = table->next_levels[l1_index];
-	//L2
-	uint64_t l2_phys = l1_entry->physical_addresses[l2_index];
-	if(!(l2_phys & PG_PRESENT_MASK)) {
-		return 0; //Not found
+	debug_printf("[PGTABLE]L1 Physical address:0x%012lx\n", l1_phys);
+	//Find l2
+	uint64_t l2_phys;
+	debug_printf("[PGTABLE]Physaddr L1: %lx, with offset: %lx\n", l1_phys & 0x3fffffffff000ULL, (l1_phys & 0x3fffffffff000ULL)  +  (l1_index*8));
+	if(read_sim_memory(mem, (l1_phys & 0x3fffffffff000ULL)  +  (l1_index*8), 8, &l2_phys) != 8 || !(l2_phys & PG_PRESENT_MASK)) {
+		debug_printf("[PGTABLE]Not found in l1 at: 0x%012lx\n",  (l1_phys & 0x3fffffffff000ULL) + (l1_index*8));
+		return NOTFOUND_ADDRESS; //Not found
 	}
 	if(l2_phys & PG_PSE_MASK) {
 		// 1G page found
-		return  (l2_phys & 0xFFFFC0000000);
+		return  (l2_phys & 0xFFFFC0000000) | (virtaddress & 0x3FFFFFFF);
 	}
-	pagetable* l2_entry = l1_entry->next_levels[l2_index];
+	debug_printf("[PGTABLE]L2 Physical address:0x%012lx\n", l2_phys);
 
-	//L3
-	uint64_t l3_phys = l2_entry->physical_addresses[l3_index];
-	if(!(l3_phys & PG_PRESENT_MASK)) {
-		return 0; //Not found
+
+	//Find l3
+	uint64_t l3_phys;
+	debug_printf("[PGTABLE]Physaddr L2: %lx, with offset: %lx\n", l2_phys & 0x3fffffffff000ULL, (l2_phys & 0x3fffffffff000ULL)  +  (l2_index*8));
+	if(read_sim_memory(mem, (l2_phys & 0x3fffffffff000ULL) + (l2_index*8), 8, &l3_phys) != 8 || !(l3_phys & PG_PRESENT_MASK)) {
+		debug_printf("[PGTABLE]Not found in l2 at: 0x%012lx\n",  (l2_phys & 0x3fffffffff000ULL) + (l2_index*8));
+		return NOTFOUND_ADDRESS; //Not found
 	}
 	if(l3_phys & PG_PSE_MASK) {
-		// 2M page
-		return l3_phys & 0xFFFFFFE00000;
+		//2^30(1G) page
+		return (l3_phys & 0xFFFFFFE00000) | (virtaddress & 0x1FFFFF);
+	}
+	debug_printf("[PGTABLE]L3 Physical address:0x%012lx\n", l3_phys);
+
+	//Find l4
+	uint64_t l4_phys;
+	debug_printf("[PGTABLE]Physaddr L3: %lx, with offset: %lx\n", l3_phys & 0x3fffffffff000ULL, (l3_phys & 0x3fffffffff000ULL)  +  (l3_index*8));
+	if(read_sim_memory(mem, (l3_phys & 0x3fffffffff000ULL) + (l3_index*8), 8, &l4_phys) != 8 || !(l4_phys & PG_PRESENT_MASK)){
+		debug_printf("PGTABLE]l4_phys_raw: 0x%012lx\n", l4_phys);
+		debug_printf("&PGPRESENTL:%lx\n", l4_phys & PG_PRESENT_MASK);
+		debug_printf("[PGTABLE]Not found in l3 at: 0x%012lx\n",  (l3_phys & 0x3fffffffff000ULL) + (l3_index*8));
+		return NOTFOUND_ADDRESS; //Not found
 	}
 
-	pagetable* l3_entry = l2_entry->next_levels[l3_index];
-	uint64_t l4_phys = l3_entry->physical_addresses[l4_index];
-	if(!(l4_phys & PG_PRESENT_MASK)){
-		return 0; //Not found
+	if(l4_phys & PG_PSE_MASK) {
+		//2^21(2M) page
+		return (l4_phys & 0xFFFFFFF80000) | (virtaddress & 0x7FFFF);
 	}
-	return  l4_phys & 0xFFFFFFFFF000;
+        //Find l4
+        uint64_t phys;
+	debug_printf("[PGTABLE]L4 Physical address:0x%012lx\n", l4_phys);
+        if(read_sim_memory(mem, (l4_phys & 0x3fffffffff000ULL) + (l4_index*8), 8, &phys) != 8 || !(phys & PG_PRESENT_MASK)){
+                return NOTFOUND_ADDRESS; //Not found
+        }
+	return  (phys & 0x3fffffffff000ULL) | (virtaddress & 0xFFF);
 }
 
-pagetable* init_pagetable() {
-	pagetable* ret = malloc(sizeof(pagetable));
-	ret->physical_addresses = calloc(512, sizeof(uint64_t));
-	ret->next_levels = calloc(512, sizeof(pagetable*));
-	return ret;
-}
-
-pagetable* read_pagetable(char* path, uint64_t* cr3) {
-	FILE* f = fopen(path, "r");
-	uint64_t totalLevelsRead = 0;
-	if(!f) {
-		return NULL;
+int print_pagetable(struct memory* mem, uint64_t cr3) {
+	uint64_t l1buf[512];
+	uint64_t l2buf[512];
+	uint64_t l3buf[512];
+	uint64_t l4buf[512];
+	if(read_sim_memory(mem, (cr3 & 0x3fffffffff000ULL), 8*512, l1buf) != 8*512) {
+		return -1;
 	}
-	if(fread(cr3, sizeof(uint64_t), 1, f) != 1) {
-		printf("Could not read cr3!\n");
-		return NULL;
-	}
-	pagetable* l1 = init_pagetable();
-	if(fread(l1->physical_addresses, sizeof(uint64_t), 512, f) != 512) {
-		printf("Could not read L1");
-		return NULL;
-	}
-	totalLevelsRead++;
-	for(int l1i = 0; l1i < 512; l1i ++ ) {
-		if(l1->physical_addresses[l1i] & PG_PRESENT_MASK) {
-			//Setup new table
-			pagetable* l2 = init_pagetable();
-			l1->next_levels[l1i] = l2;
-			if(fread(l2->physical_addresses, sizeof(uint64_t), 512, f) != 512) {
-				printf("Could not read l2\n");
-				return NULL;
+	for(uint64_t l1 = 0; l1 < 512; l1++) {
+		if(!(l1buf[l1] & PG_PRESENT_MASK)) {
+			continue;
+		}
+		if(l1buf[l1] & PG_PSE_MASK) {
+			continue;
+		}
+		//check PSE
+		if(read_sim_memory(mem, (l1buf[l1] & 0x3fffffffff000ULL), 8*512, l2buf) != 8*512) {
+			return -2;
+		}
+		for(uint64_t l2 = 0; l2 < 512; l2++) {
+			if(!(l2buf[l2] & PG_PRESENT_MASK)) {
+				continue;
 			}
-			totalLevelsRead++;
-			for(int l2i = 0; l2i < 512; l2i++ ) {
-				if(l2->physical_addresses[l2i] & PG_PRESENT_MASK && !(l2->physical_addresses[l2i] & PG_PSE_MASK)) {
-					//Setup new table
-					pagetable* l3 = init_pagetable();
-					l2->next_levels[l2i] = l3;
-					if(fread(l3->physical_addresses, sizeof(uint64_t), 512, f) != 512) {
-						printf("Could not read l3\n");
-						return NULL;
-					}
-					totalLevelsRead++;
-					for(int l3i = 0; l3i < 512; l3i++) {
-						if(l3->physical_addresses[l3i] & PG_PRESENT_MASK && !(l3->physical_addresses[l3i] & PG_PSE_MASK)) {
-							pagetable* l4 = init_pagetable();
-							l3->next_levels[l3i] = l4;
-							if(fread(l4->physical_addresses, sizeof(uint64_t), 512, f) != 512) {
-								printf("Could not read l4, l1: %d,l2: %d,l3: %d, %lu\n", l1i, l2i, l3i, totalLevelsRead);
-								return NULL;
-							}
-							totalLevelsRead++;
-
-						}
+			if(l2buf[l2] & PG_PSE_MASK) {
+				continue;
+			}
+			if(read_sim_memory(mem, (l2buf[l2] & 0x3fffffffff000ULL), 8*512, l3buf) != 8*512) {
+				return -3;
+			}
+			for(uint64_t l3 = 0; l3 < 512; l3++) {
+				if(l3 == 0) {
+					printf("L3: 0x%012lx\n", l3buf[l3]);
+				}
+				if(!(l3buf[l3] & PG_PRESENT_MASK)) {
+					continue;
+				}
+				if(read_sim_memory(mem, (l3buf[l3] & 0x3fffffffff000ULL), 8*512, l4buf) != 8*512) {
+					return -3;
+				}
+				for(uint64_t l4 = 0; l4 < 512; l4++) {
+					if(l4buf[l4] & PG_PRESENT_MASK) {
+						printf("0x%012lx -- 0x%012lx\n", (l1 <<  39) | (l2 << 30) | (l3 << 21) | (l4<<12), l4buf[l4]);
 					}
 				}
 			}
-
 		}
 	}
+}
+
+int read_pagetable(struct memory* mem, char* path) {
+	FILE* f = fopen(path, "r");
+	uint64_t cr3;
+	uint64_t totalLevelsRead = 0;
+	if(!f) {
+		return 1;
+	}
+	uint64_t physaddr;
+	uint64_t buf[1<<12];
+	uint64_t offset = 0;
+	bool first = true;
+	uint64_t stored_at;
+	uint64_t stored_at_val;
+	while(true){
+		if(fread(&physaddr, sizeof(uint64_t), 1, f) != 1) {
+			printf("Could not read physaddr\n");
+			//TODO verify EOF
+			break;
+		}
+		if(first){
+			printf("Read CR3: 0x%012lx\n", physaddr);
+		}
+		int size = 512;
+		if(fread(buf, sizeof(uint64_t), size, f) != size) {
+			printf("Could not read pagetable\n");
+			return 1;
+		}
+#ifdef DEBUG
+/*			for(int i = 0; i < 512; i++) {
+				printf("Read[%x]=0x%012lx storing at: 0x%012lx\n", i, buf[i], (8*i)+(physaddr&0x3fffffffff000ULL));
+			}*/
+#endif
+		write_sim_memory(mem, physaddr & 0x3fffffffff000ULL, size*8, buf);
+		totalLevelsRead++;
+		first = false;
+	}
 	printf("Total subtables:%d\n", totalLevelsRead);
-	return l1;
+	return 0;
+
 }

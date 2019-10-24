@@ -1,41 +1,17 @@
-#include "pagetable.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+
 #include "test.h"
+#include "memory.h"
+#include "pagetable.h"
 
 
 int tests_run = 0;
 
-int test_bits_per_level() {
-	pagetable table = {.levels = 2, .addressLength = 8};
-	_assert( 4 == bits_per_level(&table));
-	return 0;
-}
-
-int test_bits_per_level_not_divisable() {
-	pagetable table = {.levels = 3, .addressLength = 10};
-	_assert( 3 == bits_per_level(&table));
-	return 0;
-}
-
-int test_pages_per_level() {
-	pagetable table = {.levels = 2, .addressLength = 8};
-	_assert( 16 == pages_per_level(&table));
-	return 0;
-}
-
-int test_pages_per_level_single_level() {
-	pagetable table = {.levels = 1, .addressLength = 8};
-	_assert( 16*16 == pages_per_level(&table));
-	return 0;
-}
-
-
-
 int test_map_single_level() {
 	const uint64_t address = 1234;
-	pagetable table  = {.levels = 1, .addressLength = 32};
+	struct memory* mem  = init_memory();
 	_assertEquals((1 << 12), vaddr_to_phys(&table, address));
 	_assertEquals(( 1 << 12), vaddr_to_phys(&table, address)); // Check address is mapped to same value the second time
 	_assertEquals((1 << 12), (uint64_t)(table.root[address >> 12].next));
@@ -46,17 +22,15 @@ int test_map_single_level_two_entries() {
 	const uint64_t address1 = (uint64_t)1234 << 20;
 	const uint64_t address2 = (uint64_t)4321 << 20;
 	nextfreephys = (1<<12);
-	pagetable table  = {.levels = 1, .addressLength = 32};
-	_assertEquals((1<<12), vaddr_to_phys(&table, address1));
-	_assertEquals(2*(1<<12), vaddr_to_phys(&table, address2)); // Check address is mapped to same value the second time
-	_assertEquals((1 << 12), (uint64_t)(table.root[(address1>>12)].next));
-	_assertEquals(2*(1 << 12), (uint64_t)(table.root[(address2>>12)].next));
+	struct memory* mem = init_memory()
+	_assertEquals((1<<12), vaddr_to_phys(mem, &table, address1));
+	_assertEquals(2*(1<<12), vaddr_to_phys(mem, &table, address2)); // Check address is mapped to same value the second time
 
 	return 0;
 }
 
-int test_map_two_levels_single_entry() {
-	pagetable table = {.levels = 2, .addressLength = 32};
+/*int test_map_two_levels_single_entry() {
+	struct memory* mem = init_memory();
 	nextfreephys = (1 << 12);
 	const uint64_t address1 = (1234) + (2 << 18);
 	_assertEquals((1 << 12), vaddr_to_phys(&table, address1));
@@ -102,7 +76,7 @@ int test_get_level_tag() {
 	_assertEquals(4321, get_level_tag(&table, address, 1));
 	return 0;
 }
-
+*/
 
 
 int main(int argc, char **argv) {

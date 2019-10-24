@@ -16,9 +16,9 @@ extern const int BUS_REQUEST_READX;
 extern const int BUS_REQUEST_UPGR;
 extern const int BUS_REQUEST_FLUSH;
 
-#define CACHE_WRITE (uint8_t)0
-#define CACHE_READ  (uint8_t)1
-#define CR_UPDATE (uint8_t)2
+#define CACHE_WRITE (uint8_t)1
+#define CACHE_READ  (uint8_t)2
+#define CR_UPDATE (uint8_t)3
 
 
 extern uint64_t ADDRESS_OFFSET_MASK;

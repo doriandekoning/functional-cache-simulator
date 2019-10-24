@@ -61,7 +61,7 @@ int get_cache_access(FILE* pipe, cache_access* access) {
 	READ_UINT64_FROM_PIPE(access->cpu)
 	READ_UINT64_FROM_PIPE(access->address);
 	uint8_t info_int;
-	struct qemu_mem_info* info;
+	struct qemu_mem_info* info; //TODO do not allocate a new one every time
 	READ_UINT8_FROM_PIPE(info_int);
 	info = get_mem_info(info_int);
 	access->type = info->store ? CACHE_WRITE : CACHE_READ;

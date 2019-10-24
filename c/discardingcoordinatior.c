@@ -21,7 +21,7 @@
 
 
 
-int run_coordinator(int world_size, char* input_pagetables, bool input_is_pipe, char* cr3_file_path) {
+int run_coordinator(int world_size, char* input_pagetables, bool input_is_pipe, char* cr3_file_path, char* something) {
 
 	unsigned char buf[4048];
 	struct memory* mem = init_memory();
@@ -45,6 +45,9 @@ int run_coordinator(int world_size, char* input_pagetables, bool input_is_pipe, 
 		if(MPI_Recv(accesses, BATCH_SIZE, mpi_access_type, 1, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE) != 0) {
 			printf("MPI error receiving!\n");
 			return 1;
+		}
+		for(int i = 0; i < BATCH_SIZE; i++){
+			printf("Access:%lu, %d\n",accesses[i].tick, accesses[i].type);
 		}
 		if(amount_packages_read% 1000000 == 0) {
 			printf("%d million packages received!\n", amount_packages_read/1000000);

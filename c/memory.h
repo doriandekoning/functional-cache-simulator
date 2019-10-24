@@ -5,13 +5,13 @@
 #include <stdlib.h>
 
 struct memory{
-	uint64_t* table;
+	struct memory** table;
 };
 
 struct memory* init_memory();
 void free_memory();
 
-int write_sim_memory(struct memory* mem, uint64_t address, size_t size, uint8_t* value);
-int read_sim_memory(struct memory* mem, uint64_t address, size_t size, uint8_t* value);
+int write_sim_memory(struct memory* mem, uint64_t address, size_t size, void* value);
+int read_sim_memory(struct memory* mem, uint64_t address, size_t size, void* value);
 
 #endif /* __MEMORY_H */

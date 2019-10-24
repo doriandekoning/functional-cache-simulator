@@ -29,18 +29,20 @@ int main(int argc, char** argv) {
 	MPI_Get_processor_name(processor_name, &name_len);
 
 
-	if(argc < 5) {
+	if(argc < 6) {
 		printf("First argument should be the path of the pagetable dump\n");
 		printf("Second argument specifies the input file location!\n");
 		printf("Third argument [yn] specifies wether the input is a pipe!\n");
 		printf("Fourth argument specifies the path of the cr3 output file!\n");
+		printf("Fifth argument specifies the path of the initial CR values!\n");
 		printf("But only %d arguments where provided\n", argc);
 		return 1;
 	}
 	char* yn = argv[3];
 	bool input_pipe = (yn[0] == 'y');
+	printf("INITIAL CR VALUES PATH:%s\n", argv[5]);
 	if(world_rank == 0){
-		run_coordinator(world_size, argv[1], input_pipe, argv[4]);
+		run_coordinator(world_size, argv[1], input_pipe, argv[5]);
 	} else if(world_rank == 1) {
 		run_input_reader(argv[2], argv[4], input_pipe);
 	}else {

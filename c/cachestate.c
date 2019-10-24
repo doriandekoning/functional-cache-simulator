@@ -90,7 +90,7 @@ struct statechange get_msi_state_change(int current_state, uint8_t access_type) 
 			ret.bus_request = -1;
 		}
 	}else{
-		printf("Received unknown access type!\n");
+		printf("Received unknown access type:%d\n", access_type);
 		exit(-1);
 	}
 	return ret;
