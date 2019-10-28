@@ -10,13 +10,14 @@
 #define SIMULATION_LIMIT    500000000
 #define MESSAGE_BATCH_SIZE  1000
 #define INPUT_BATCH_SIZE 1024
-
-//#define DEBUG 1
+#define VIRT_TO_PHYS_TRANSLATION 1
 
 #ifdef DEBUG
-    #define debug_printf(fmt, args...) printf("%s:%s:%d: "fmt, __FILE__, __FUNCTION__, __LINE__, args)                                                                          
+  #define debug_printf(fmt, args...) printf("%s:%s:%d: "fmt, __FILE__, __FUNCTION__, __LINE__, args)                                                                          
+  #define debug_print(str) printf("%s:%s:%d: "str, __FILE__, __FUNCTION__, __LINE__)
 #else
-    #define debug_printf(fmt, args...) {}
+  #define debug_printf(fmt, args...) {}
+  #define debug_print(str) {}
 #endif
 
 #endif /* CONFIG_H */

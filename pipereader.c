@@ -82,21 +82,21 @@ int get_cr_change(FILE* pipe, cr_change* change){
 }
 
 uint8_t get_next_event_id(FILE* pipe) {
-    do{
-        uint8_t record_type;
-        READ_UINT8_FROM_PIPE(record_type)
-	uint8_t event_id;
-	READ_UINT8_FROM_PIPE(event_id)
-        if( record_type == 0) {
-		uint32_t length;
-		READ_UINT32_FROM_PIPE(length)
-		char* text = malloc(length);
-		READ_STRING_FROM_PIPE(text, length)
-        } else if (record_type == 1) {
-		return event_id;
-        }   else {
-            printf("Unknown record type: %lx encountered!\n", record_type);
-            return -1;
-        }
+  do{
+    uint8_t record_type;
+    READ_UINT8_FROM_PIPE(record_type)
+  	uint8_t event_id;
+	  READ_UINT8_FROM_PIPE(event_id)
+    if( record_type == 0) {
+		  uint32_t length;
+		  READ_UINT32_FROM_PIPE(length)
+		  char* text = malloc(length);
+		   READ_STRING_FROM_PIPE(text, length)
+     } else if (record_type == 1) {
+		   return event_id;
+     } else {
+       debug_printf("Unknown record type: %lx encountered!\n", record_type);
+      return -1;
+     }
     }while(true);
 }

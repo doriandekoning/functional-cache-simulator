@@ -20,8 +20,7 @@
 #include "input_reader.h"
 
 
-
-int run_coordinator(int world_size, char* input_pagetables, bool input_is_pipe, char* cr3_file_path, char* something) {
+int run_coordinator(int world_size, bool read_pgtables, char* input_pagetables, char* cr_values_path){
 
 	unsigned char buf[4048];
 	struct memory* mem = init_memory();

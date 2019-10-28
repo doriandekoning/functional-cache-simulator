@@ -26,7 +26,8 @@
 
 #define PG_MASK (1 << 31)
 #define PE_MASK (1 << 0)
-#define PAGING_ENABLED (cr[0] & PE_MASK) && (cr[0] & PG_MASK)
+#define PAGING_ENABLED(cpu) (control_registers[cpu][0] & PE_MASK) && (control_registers[cpu][0] & PG_MASK)
+#define AMOUNT_CONTROL_REGISTERS 9
 int* stored_access_counts;
 
 cache_access* stored_accesses;
@@ -36,11 +37,10 @@ clock_t time_waited = 0;
 clock_t before_waited;
 
 int* cpu_id_map;
-uint64_t* cr;
+uint64_t** control_registers;
 
 uint64_t curCr3 = 0;
 FILE* cr3_file;
-uint64_t* cr;
 uint8_t paging_enabled = 0;
 
 int write_cr3_to_file(uint64_t cr3) {
@@ -115,31 +115,49 @@ void sigintHandler(int sig) {
 	printf("%d recevied\n", sig);
 }
 
-int read_cr_values(char* cr_values_path, uint64_t* cr) {
-	printf("Opening CR Values file at:%s\n", cr_values_path);
+int read_cr_values(char* cr_values_path, uint64_t control_registers[AMOUNT_SIMULATED_PROCESSORS][5]) { //TODO support multiple cpu
+	debug_printf("Opening CR Values file at:%s\n", cr_values_path);
 	FILE* f = fopen(cr_values_path, "rb");
 	if(f == NULL){
 		printf("Unable to open control register initial values file:%s\n", strerror(errno));
 		return 1;
 	}
-	struct stat buf;
-	stat(cr_values_path, &buf);
-	char* buffer = calloc(sizeof(char), 1024);
-	const char delim[] = "\n";
-	if(fread(buffer,buf.st_size, 1, f)==0) {
+/*	struct stat buf;
+	  stat(cr_values_path, &buf);
+  	char* buffer = calloc(sizeof(char), 4096);
+	debug_print("Reading cr3 values!\n");
+  int buffer_size = fread(buffer,1, buf.st_size, f);
+  debug_printf("Read %d characters from file!\n", buffer_size);
+  if(buffer_size == 0) {
 		perror("Could not read from control registers initial values file!");
 		return 1;
+	}*/
+	uint64_t processor = 0;
+  int string_offset = 0;
+	for(int i = 0; i < AMOUNT_SIMULATED_PROCESSORS; i++){
+    fscanf(f, "%llx\n", &processor);
+		processor = map_cpu_id(processor);
+    for(int j = 0; j<5; j++) {
+       
+      fscanf(f, "%llx\n", &(control_registers[processor][j]));
+    }
+		debug_printf("Paging is: %s\n", PAGING_ENABLED(processor) ? "enabled" : "disabled");
+		debug_printf("Initial CR values for processor:%lx\n", processor);
+		for(int i = 0; i < 5; i++ ) {
+			debug_printf("Processor[%lx]CR%d=0x%lx\n", processor, i, control_registers[processor][i]);
+		}
 	}
-	sscanf(buffer, "%lx\n%lx\n%lx\n%lx\n%lx\n", &(cr[0]), &(cr[1]), &(cr[2]), &(cr[3]), &(cr[4]));
-	printf("Initial CR values:\n");
-	for(int i = 0; i <= 4; i++ ){
-		printf("CR%d=0x%lx\n", i, cr[i]);
-	}
-	printf("Paging is: %s\n", PAGING_ENABLED ? "enabled" : "disabled");
 	return 0;
 }
 
-int run_coordinator(int world_size, char* input_pagetables, bool input_is_pipe, char* cr_values_path) {
+int run_coordinator(int world_size, bool read_pgtables, char* input_pagetables, char* cr_values_path) {
+	MPI_Datatype mpi_access_type;
+
+  uint64_t control_registers[AMOUNT_SIMULATED_PROCESSORS][5];
+	printf("Starting coordinator!\n");
+	#ifndef VIRT_TO_PHYS_TRANSLATION
+	if(read_pgtables) { printf("Reading pagetables is not available when compiled without virtual to physical address translation!\n"); }
+	#endif /* VIRT_TO_PHYS_TRANSLATION */
 	signal(SIGINT, sigintHandler);
 	unsigned char buf[4048];
 	struct memory* mem = init_memory();
@@ -148,13 +166,10 @@ int run_coordinator(int world_size, char* input_pagetables, bool input_is_pipe, 
 		cpu_id_map[i] = INT_MAX;
 	}
 
-	cr = malloc(5*sizeof(uint64_t));
-
-	MPI_Datatype mpi_access_type;
-	cache_access* accesses;
+	cache_access accesses[sizeof(cache_access)*INPUT_BATCH_SIZE];
 	int err = get_mpi_access_datatype(&mpi_access_type);
-	if(err != 0){
-		printf("Unable to create datatype, erorr:%d\n", err);
+	if(err != 0) {
+		printf("Unable to get mpi access datatype, error:%d\n", err);
 		return err;
 	}
 	//Setup access
@@ -168,60 +183,60 @@ int run_coordinator(int world_size, char* input_pagetables, bool input_is_pipe, 
 	int total_mem_access = 0;
 	int phys_mem_access = 0;
 	int total_cr_change = 0;
+  MPI_Status status;
 	start = clock();
-	//Wait for header to be available
-	accesses = malloc(sizeof(cache_access)*INPUT_BATCH_SIZE);
-	cr = calloc(9, sizeof(uint64_t));
-	MPI_Status status;
-	printf("Starting to receive trace events!\n");
-	while(true){
-		if(MPI_Recv(accesses, INPUT_BATCH_SIZE, mpi_access_type, 1, 0, MPI_COMM_WORLD, &status) != MPI_SUCCESS) {
-			printf("MPI error receiving!\n");
-			return 1;
-		}
-		int count;
-		if(MPI_Get_count(&status, mpi_access_type, &count) != MPI_SUCCESS) {
-			printf("Unable to get count!\n");
-			return 1;
-		}
-		amount_packages_read+=count;
-		for(int i = 0; i < count; i++) {
-			if(accesses[i].type == CACHE_READ || accesses[i].type == CACHE_WRITE){
-				if(total_mem_access == 0){
-					if(read_cr_values(cr_values_path, cr)) {
-						printf("Unable to read initial cr values!\n");
+  debug_print("Starting to receive trace events!\n");
+  while(true){
+    debug_printf("Receiving!%p\n", accesses);
+    if(MPI_Recv(accesses, INPUT_BATCH_SIZE, mpi_access_type, 1, 0, MPI_COMM_WORLD, &status) != MPI_SUCCESS) {
+      printf("MPI error receiving!\n");
+      return 1;
+    }
+    debug_print("Receveived!\n");
+    int count;
+    if(MPI_Get_count(&status, mpi_access_type, &count) != MPI_SUCCESS) {
+      printf("Unable to get count!\n");
+      return 1;
+    }
+		debug_printf("Received %d accesses\n", count);
+    amount_packages_read+=count;
+    for(int i = 0; i < count; i++) {
+			accesses[i].cpu = map_cpu_id(accesses[i].cpu);
+      if(accesses[i].type == CACHE_READ || accesses[i].type == CACHE_WRITE){
+        if(total_mem_access == 0){
+				  debug_print("Reading initial cr values!\n");
+					if(read_cr_values(cr_values_path, control_registers)) {
+					  printf("Unable to read initial cr values!\n");
 						exit(1);
-					}
+				  }
 					if(read_pagetables(input_pagetables, mem)) {
-						printf("Unable to read pagetables!\n");
+					  printf("Unable to read pagetables!\n");
 						exit(1);
 					}
 				}
-/*				if(total_mem_access > 10){
-					printf("Exitting, unable to map: %lu\n", unable_to_map);
-					return 0;
-				}*/
 				total_mem_access++;
 				//Map cpu to a range from the qemu cpu id to a range
 				//1...n
-				accesses[i].cpu = map_cpu_id(accesses[i].cpu);
 				uint64_t virt = accesses[i].address;
-				if(PAGING_ENABLED) {
-					accesses[i].address = vaddr_to_phys(mem, cr[3], accesses[i].address);
+				#ifdef VIRT_TO_PHYS_TRANSLATION
+				debug_print("Converting virt to phys!\n");
+				if(PAGING_ENABLED(accesses[i].cpu)) {
+					accesses[i].address = vaddr_to_phys(mem, control_registers[accesses[i].cpu][3], accesses[i].address);
 				}else{
 					phys_mem_access++;
 				}
+				if(unable_to_map % 100000 == 0){
+				  printf("%lu out of %lu accesses not mappable: %f\%\n", unable_to_map, total_mem_access, (double)unable_to_map/(double)total_mem_access*100.0);
+				}
 				if(accesses[i].address == NOTFOUND_ADDRESS ){
+          debug_print("unable to map!\n");
 					unable_to_map++;
-					if(unable_to_map % 100000 == 0){
-						printf("%lu out of %lu accesses not mappable: %f\%\n", unable_to_map, total_mem_access, (double)unable_to_map/(double)total_mem_access*100.0);
-					}
 					continue;
 				}
 				//From here addresses[i].address contains the
 				//physical address
-				if(unable_to_map != 0 && total_packets_stored%10000000== 0 ) {
-					printf("Percentage of the %lu memory accesses mappable:%.2f\n", total_mem_access, 100.0f*(float)unable_to_map/(float)total_mem_access);
+				if(total_packets_stored%10000000== 0 ) {
+						printf("Percentage of the %lu memory accesses mappable:%.2f\n", total_mem_access, 100.0f*(float)unable_to_map/(float)total_mem_access);
 				}
 				if(accesses[i].type == CACHE_WRITE) {
 					int written = write_sim_memory(mem, accesses[i].address, accesses[i].size, &accesses[i].data);
@@ -230,6 +245,7 @@ int run_coordinator(int world_size, char* input_pagetables, bool input_is_pipe, 
 						return 0;
 					}
 				}
+				#endif /* VIRT_TO_PHYS_TRANSLATION */
 				if(amount_packages_read > SIMULATION_LIMIT){
 					printf("Simulation limit reached!\n");
 					return 0;
@@ -245,8 +261,10 @@ int run_coordinator(int world_size, char* input_pagetables, bool input_is_pipe, 
 				if(total_mem_access %1000000 == 0) {
 					printf("Coordinator received %d accesses of which %d where phycical\n", total_mem_access, phys_mem_access);
 				}
-			//CR CHANGE
+			//CR CHANG
+			#ifdef VIRT_TO_PHYS_TRANSLATION
 			}else if(accesses[i].type == CR_UPDATE) {
+        debug_print("Received cr update!\n");
 				//TODO multiple cpu support
 				total_cr_change++;
 				if(accesses[i].size > 4 && accesses[i].size != 8) {
@@ -254,11 +272,15 @@ int run_coordinator(int world_size, char* input_pagetables, bool input_is_pipe, 
 					exit(1);
 				}
 				//Update current_pagetable
-				bool before_paging_enabled = PAGING_ENABLED;
-				cr[accesses[i].size] = accesses[i].address;
-				if(accesses[i].size == 0 && before_paging_enabled != PAGING_ENABLED){
-					printf("Paging %sabled!\n", PAGING_ENABLED ? "en" : "dis"); 
+        printf("JHAAAAHE!%lx\n", accesses[i].cpu);
+				bool before_paging_enabled = PAGING_ENABLED(accesses[i].cpu);
+        printf("HIER!\n");
+				control_registers[accesses[i].cpu][accesses[i].size] = accesses[i].address;
+        printf("MAAR NIET HIER!\n");
+				if(accesses[i].size == 0 && before_paging_enabled != PAGING_ENABLED(accesses[i].cpu)){
+					printf("Paging %sabled!\n", PAGING_ENABLED(accesses[i].cpu) ? "en" : "dis"); 
 				}
+			#endif /* VIRT_TO_PHYS_TRANSLATION*/
 			}else{
 				printf("Unknown access at tick: %lx type:%d\n",accesses[i].tick, accesses[i].type);
 			}
