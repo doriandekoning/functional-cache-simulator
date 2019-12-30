@@ -18,6 +18,7 @@ int read_mapping(char* input_file_location, struct EventIDMapping* mapping) {
     if(fread(&event_id, 1, 1, mapping_fp) != 1 || fread(&len, 1, 4, mapping_fp) != 4) {
       return 0;
     }
+    event_id &= (0x3F);
     if(len >= 256) {
       printf("Buffer size too small!\n");
       return 1;
@@ -27,12 +28,10 @@ int read_mapping(char* input_file_location, struct EventIDMapping* mapping) {
       return 1;
     }
     event_name[len] = '\0';
-    if(!strcmp(event_name, "guest_mem_before_exec")) {
-      mapping->guest_mem_before_exec = event_id;
-    } else if(!strcmp(event_name, "guest_mem_load_before_exec")) {
-      mapping->guest_mem_store_before_exec = event_id;
-    } else if(!strcmp(event_name, "guest_mem_store_before_exec")) {
+    if(!strcmp(event_name, "guest_mem_load_before_exec")) {
       mapping->guest_mem_load_before_exec = event_id;
+    } else if(!strcmp(event_name, "guest_mem_store_before_exec")) {
+      mapping->guest_mem_store_before_exec = event_id;
     } else if(!strcmp(event_name, "guest_update_cr")) {
       mapping->guest_update_cr = event_id;
     } //TODO instruction fetch

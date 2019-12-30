@@ -1,95 +1,100 @@
-#include "pipereader.h"
-#include "cachestate.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
 
+#include "pipereader.h"
+#include "cache/state.h"
+#include "mappingreader/mappingreader.h"
+
 #define PG_MASK (1 << 31)
 #define PE_MASK (1 << 0)
-int main(int argc, char **argv) {
-	if(argc < 2) {
-		printf("Atleast one argument must be provieded!\n");
-		return 10;
-	}
 
+
+int main(int argc, char **argv) {
+	struct EventIDMapping trace_mapping;
 	FILE* in;
 	unsigned char buf[4048];
-	in = fopen(argv[1], "w");
-	if(!in){
-		printf("Could not open file\n");
+
+	if(argc < 3) {
+		printf("Atleast two arguments must be provided, first the mapping path, second the trace file\n");
 		return 1;
 	}
-        while(read_header(in) != 0) {
-//              printf("Unable to read header!\n");
-                sleep(1);
-        }
-	uint64_t kernel_reads_64 = 0;
-	uint64_t kernel_reads_other = 0;
-	uint64_t kernel_writes = 0;
-	uint64_t user_access = 0;
-	uint64_t write_phys = 0;
-	uint64_t write_virt = 0;
+
+	if(read_mapping(argv[1], &trace_mapping)){
+		printf("Could not read trace mapping!\n");
+		return 1;
+	}
+	debug_printf("Event id mapping:\n%d->%s\n%d->%s\n%d->%s\n",
+		trace_mapping.guest_update_cr, "guest_update_cr",
+		trace_mapping.guest_mem_load_before_exec, "guest_mem_load_before_exec",
+		trace_mapping.guest_mem_store_before_exec, "guest_mem_store_before_exec"
+	);
+
+	in = fopen(argv[2], "r");
+	if(in == NULL) {
+		printf("Could not open file!\n");
+		return 1;
+	}
+	if(read_header(in) != 0) {
+		printf("Unable to read header\n");
+		return 1;
+	}
+	uint64_t cr_update_count = 0;
+	uint64_t amount_reads = 0;
+	uint64_t amount_writes = 0;
+	uint64_t largest_delta_time = 0;
 	uint8_t paging_enabled = 0;
 	cache_access* tmp_access = malloc(sizeof(cache_access));
 	cr_change* tmp_cr_change = malloc(sizeof(cr_change));
+	uint64_t delta_t = 0;
+	uint64_t current_timestamp = 0;
+	uint8_t next_event_id;
+	bool negative_delta_t;
 	while(true) {
-		uint8_t next_event_id = get_next_event_id(in);
-		if(next_event_id == (uint8_t)-1) {
-                        usleep(100000);
-			printf("Sleeping!\n");
-                        continue;
+
+		if(get_next_event_id(in, &delta_t, &negative_delta_t, &next_event_id) == -1) {
+			printf("Unable to read ID of next event!\n");
+			break;
 		}
-		if(next_event_id == 67 || next_event_id == 69) {
-			if(get_cache_access(in, tmp_access)) {
+		if(!negative_delta_t) {
+			current_timestamp += delta_t;
+		}else{
+			current_timestamp -= delta_t;
+		}
+		if(next_event_id == trace_mapping.guest_mem_load_before_exec || next_event_id == trace_mapping.guest_mem_store_before_exec ) {
+			if(get_memory_access(in, tmp_access, next_event_id == trace_mapping.guest_mem_store_before_exec)) {
 				printf("Can not read cache access\n");
 				break;
 			}
-			if(tmp_access->type == CACHE_WRITE && paging_enabled == 2) {
-				write_virt++;
-			}else if(tmp_access->type == CACHE_WRITE){
-				write_phys++;
-			}
-			if(tmp_access->address & (1L << 63)){
-
-				if(tmp_access->type == CACHE_READ && tmp_access->size == 8){
-					kernel_reads_64++;
-				}else if(tmp_access->type == CACHE_READ){
-					kernel_reads_other++;
-				}else{
-					kernel_writes++;
-				}
+			if(next_event_id == trace_mapping.guest_mem_load_before_exec) {
+				amount_reads++;
 			}else{
-				user_access++;
+				amount_writes++;
 			}
-		} else if(next_event_id == 70) {
+			if (tmp_access->type == CACHE_WRITE)  {
+				printf("Mem write delta_t:\t%lx\t\t at %lx\t\t for address %lx size: %d\tdata:%lx\n", delta_t, current_timestamp, tmp_access->address, tmp_access->size, tmp_access->data);
+			}else{
+				printf("Mem read delta_t:\t%lx\t\t at %lx\t\t for address %lx size: %d\n", delta_t, current_timestamp, tmp_access->address, tmp_access->size);
+			}
+		} else if(next_event_id == trace_mapping.guest_update_cr) {
+			cr_update_count++;
 			if(get_cr_change(in, tmp_cr_change)) {
 				printf("Can not read cr change\n");
+				break;
 			}
-			uint64_t newval = tmp_cr_change->new_value;
-			if(tmp_cr_change->register_number==0){
-				if(paging_enabled == 2 && (!(newval & PE_MASK) || !(newval & PG_MASK))){
-					printf("Paging disabled!\n");
-					paging_enabled=1;
-				}else if(paging_enabled <= 1 && (newval & PE_MASK) && (newval & PG_MASK)){
-					printf("Paging enabled!\n");
-					paging_enabled=2;
-				}
-			}else if(tmp_cr_change->register_number == 3) {
-//				printf("CR3:%lu\n", tmp_cr_change->new_value);
-			}
+			printf("CR[%d] updated to: %lx\n", tmp_cr_change->register_number, tmp_cr_change->new_value);
 		}else {
 			printf("Unknown eventid: %x\n", next_event_id);
 			break;
 		}
-	
 	}
-	printf("Kernel reads 64:%lu\n", kernel_reads_64);
-	printf("Kernel reads other:%lu\n", kernel_reads_other);
-	printf("Physwrite \t%lu\n", write_phys);
-	printf("Virtwrite \t%lu\n", write_virt);
-	printf("Kernel writes\t%lu\n", kernel_writes);
-	printf("User accesses:\t%lu\n", user_access);
+	printf("Amount of CR updates:\t%lu\n", cr_update_count);
+	printf("Reads:\t\t%lu\n", amount_reads);
+	printf("Writes:\t\t%lu\n", amount_writes);
+
+	free(tmp_access);
+	free(tmp_cr_change);
 }
 
 
