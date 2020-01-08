@@ -1,4 +1,4 @@
-#include "cachestate.h"
+#include "state.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -14,7 +14,7 @@ int tests_run = 0;
 
 
 int test_get_cache_set_state() {
-    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_SIZE, sizeof(struct CacheEntry*));
+    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES, sizeof(struct CacheEntry*));
 
     //Test when just getting the first line state
     struct CacheEntry firstEntry;
@@ -59,7 +59,7 @@ int test_get_cache_entry_state() {
 }
 
 int test_set_cache_set_state() {
-    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_SIZE, sizeof(struct CacheEntry*));
+    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES, sizeof(struct CacheEntry*));
 
     //Test set in empty location
     struct CacheEntry newEntry = {.tag=10};
@@ -179,6 +179,30 @@ int test_move_midle_item_back() {
     _assert(third.prev == &first);
     _assert(second.prev == &third);
     _assert(first.prev == NULL);
+    return 0;
+}
+
+
+int test_move_fourth_item_back() {
+    CacheSetState list = NULL;
+    struct CacheEntry fourth;
+    for(int i = 0; i < 8; i++) {
+        struct CacheEntry new = {tag: i};
+        if(i == 4)fourth = new;
+        list = append_item(list, &new);
+    }
+    //Move first back
+    move_item_back(&fourth);
+    int expectedOrder[8] = {7, 6, 5, 3, 2, 1, 0, 4};
+    struct CacheEntry* next = list;
+    int i = 0;
+    while(next != NULL) {
+        printf("i:%d Expected:%d, actual:%d\n",i, expectedOrder[i], next->tag);
+        _assert(expectedOrder[i] == next->tag);
+        i++;
+        next = next->next;
+    }
+
     return 0;
 }
 
@@ -327,8 +351,6 @@ int test_apply_state_insert(){
     return 0;
 }
 
-
-
 int test_apply_state_empty(){
     struct statechange change = {.new_state = STATE_MODIFIED};
     CacheSetState new_state = apply_state_change(NULL, NULL, change, 9);
@@ -337,6 +359,59 @@ int test_apply_state_empty(){
     _assert(new_state->tag == 9);
     return 0;
 }
+
+int test_perform_cache_access_twice_same() {
+    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES, sizeof(struct CacheEntry*));
+    _assert(!perform_cache_access(state, 0, 0x11, true));
+    _assert(perform_cache_access(state, 0, 0x11, true));
+}
+
+
+int test_perform_cache_access_evict() {
+    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES, sizeof(struct CacheEntry*));
+    // Each cache set contains (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS) lines, thus if we fill all those and add one additional one
+    // the first should be evicted
+    for(int i = 0; i < (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS) +1; i++) {
+        _assert(!perform_cache_access(state, 0, 0x11 + (i*CACHE_AMOUNT_LINES), true));
+    }
+    _assert(!perform_cache_access(state, 0, 0x11, true));
+    //Start from 2 since the first and second are evicted by accesses above (the first in the loop and the one in the line directly above)
+    for(int i = 2; i < (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS); i++) {
+        _assert(perform_cache_access(state, 0, 0x11 + (i*CACHE_AMOUNT_LINES), true));
+    }
+}
+
+int test_perform_cache_access_full_line_no_evict() {
+    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES, sizeof(struct CacheEntry*));
+    //Fill cache line 0x11
+    for(int i = 0; i < (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS); i++) {
+        _assert(!perform_cache_access(state, 0, 0x11 + (i*CACHE_AMOUNT_LINES), true));
+    }
+    //Access the 5th entry (this should put it in front of the lru queue)
+    _assert(perform_cache_access(state, 0, 0x11 + (4*CACHE_AMOUNT_LINES), true));
+    // Check that this has not evicted anything
+    for(int i = 0; i < (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS); i++) {
+        _assert(perform_cache_access(state, 0, 0x11 + (i*CACHE_AMOUNT_LINES), true));
+    }
+}
+
+
+int test_perform_cache_access_full_line_move_front() {
+    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES, sizeof(struct CacheEntry*));
+    //Fill cache line 0x11
+    for(int i = 0; i < (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS); i++) {
+        _assert(!perform_cache_access(state, 0, 0x11 + (i*CACHE_AMOUNT_LINES), true));
+    }
+    //Access the 1th entry again (this should put it in the front of the lru queue)
+    _assert(perform_cache_access(state, 0, 0x11, true));
+    // Insert another cache line
+    _assert(!perform_cache_access(state, 0, 0x11 + (20*CACHE_AMOUNT_LINES), true));
+    // Check that the 2nd entry has been evicted
+    for(int i = 0; i < (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS); i++) {
+        _assert((i == 1) == perform_cache_access(state, 0, 0x11 + (i*CACHE_AMOUNT_LINES), true));
+    }
+}
+
 
 
 int main(int argc, char **argv) {
@@ -361,7 +436,11 @@ int main(int argc, char **argv) {
     _test(test_apply_state_change_modified_third, "test_apply_state_change_modified_third");
     _test(test_apply_state_change_modified_first, "test_apply_state_change_modified_first");
     _test(test_apply_state_insert, "test_apply_state_insert");
-
+    _test(test_perform_cache_access_twice_same, "test_perform_cache_access_twice_same");
+    _test(test_perform_cache_access_evict, "test_perform_cache_access_evict");
+    _test(test_perform_cache_access_full_line_no_evict, "test_perform_cache_access_evict_middle");
+    _test(test_move_fourth_item_back, "test_move_fourth_item_back");
+    _test(test_perform_cache_access_full_line_move_front, "test_perform_cache_access_full_line_move_front");
     if(failed_tests == 0 ){
         printf("All tests passed!\n");
     } else {

@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "config.h"
-#include "pipereader.h"
+#include "pipereader/pipereader.h"
 
 extern const int STATE_INVALID;
 extern const int STATE_INVALID;

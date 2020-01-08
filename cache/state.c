@@ -66,7 +66,7 @@ bool perform_cache_access(CacheState state, uint64_t cpu, uint64_t address, bool
 
 	//TODO update state in other cpus based on bus message
 
-	return (entry_state != NULL); //TODO this changes when simulating multiple cpu's
+	return (entry_state != NULL) && (entry_state->state != STATE_INVALID); //TODO this changes when simulating multiple cpu's
 }
 
 

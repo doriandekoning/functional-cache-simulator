@@ -18,19 +18,7 @@
 
 #define UINT_FROM_BUF(type, index) *(type*)(buf+index)
 
-#define INFO_SIZE_SHIFT_MASK 0xf /* size shift mask */
-#define INFO_SIGN_EXTEND_MASK (1ULL << 4)    /* sign extended (y/n) */
-#define INFO_BIG_ENDIAN_MASK (1ULL << 5)    /* big endian (y/n) */
-#define INFO_STORE_MASK (1ULL << 6)    /* store (y/n) */
-
 uint8_t buf[128];
-
-void get_mem_info(uint16_t raw_info, struct qemu_mem_info* info_struct) {
-	info_struct->size_shift = raw_info & INFO_SIZE_SHIFT_MASK;
-	info_struct->store = raw_info & INFO_STORE_MASK;
-	info_struct->endianness = raw_info & INFO_BIG_ENDIAN_MASK;
-	info_struct->sign_extend = raw_info & INFO_SIGN_EXTEND_MASK;
-}
 
 int read_header(FILE* pipe) {
   // Read eventid
@@ -62,15 +50,20 @@ uint64_t get_memory_access(FILE* pipe, cache_access* access, bool write) {
   READ_BYTES_FROM_PIPE(buf, 1 + 8 + 2); // cpu(1) + address(8) + info_int(2)
   access->cpu = UINT_FROM_BUF(uint8_t, 0);
   access->address = UINT_FROM_BUF(uint64_t, 1);
-	get_mem_info(UINT_FROM_BUF(uint16_t, 9), (struct qemu_mem_info*)buf+32);
-	access->type = (UINT_FROM_BUF(struct qemu_mem_info, 32)).store ? CACHE_WRITE : CACHE_READ;
-	access->size = (1 << (UINT_FROM_BUF(struct qemu_mem_info, 32)).size_shift);
-  access->big_endian = UINT_FROM_BUF(uint8_t, 32) & INFO_BIG_ENDIAN_MASK;
+  // access->physaddress = UINT_FROM_BUF(uint64_t, 9);
+	access->type = (UINT_FROM_BUF(uint8_t, 9) & INFO_STORE_MASK) ? CACHE_WRITE : CACHE_READ;
+	access->size = (1 << (UINT_FROM_BUF(uint8_t, 9) & INFO_SIZE_SHIFT_MASK));
+  uint8_t info =  UINT_FROM_BUF(uint8_t, 9);
+  // uint8_t size_shift =  UINT_FROM_BUF(uint8_t, 9) & INFO_SIZE_SHIFT_MASK;
+  access->big_endian = UINT_FROM_BUF(uint8_t, 9) & INFO_BIG_ENDIAN_MASK;
   access->user_access = (UINT_FROM_BUF(uint8_t, 10) == MMU_USER_IDX);
-
+  // READ_UINT8_FROM_PIPE(access->location);
 	if(write) {
-    READ_UINT8_FROM_PIPE(access->location);
 		READ_UINT64_FROM_PIPE(access->data);
+    if(access->size != 8 && access->data) {
+      uint32_t c = access->data;
+    }
+    // READ_UINT64_FROM_PIPE(access->cr3_val);
 	}
 	return 0;
 }
@@ -81,6 +74,13 @@ uint64_t get_cr_change(FILE* pipe, cr_change* change){
 	change->register_number = UINT_FROM_BUF(uint8_t, 1);
 	change->new_value = UINT_FROM_BUF(uint64_t, 2);
 	return 0;
+}
+
+uint64_t get_invlpg(FILE* pipe, uint64_t* addr, uint8_t* cpu) {
+  READ_BYTES_FROM_PIPE(buf, 8 +1);
+  *addr = UINT_FROM_BUF(uint64_t, 0);
+  *cpu = UINT_FROM_BUF(uint8_t, 8);
+  return 0;
 }
 
 int get_next_event_id(FILE* pipe, uint64_t* delta_t, bool* negative_delta_t, uint8_t* event_id) {
@@ -96,7 +96,6 @@ int get_next_event_id(FILE* pipe, uint64_t* delta_t, bool* negative_delta_t, uin
     *delta_t |= (__bswap_16(delta_t_lsb) & 0x7fff);
   }
   READ_UINT8_FROM_PIPE(*event_id);
-
   *negative_delta_t = (*event_id & (1 << 7)) >> 7;
   *event_id &= 0x7f; //filter deltat+- bit
   return 0;

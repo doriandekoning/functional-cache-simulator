@@ -19,8 +19,7 @@ int test_init() {
 
 int test_write_last_level() {
 	struct memory* mem = init_memory();
-	uint64_t value = 54321;
-	uint64_t expected = __bswap_64(value);
+	uint64_t value = 0x654321;
 	int written = write_sim_memory(mem, 0xAFF, 8, (uint8_t*)&value);
 	_assertEquals(8, written);
 	struct memory* l1 = mem->table[0];
@@ -37,7 +36,7 @@ int test_write_last_level() {
 	printf("Table is at:%p\n", ((void*)l5->table));
 	printf("Test is reading from:%p\n", ((void*)l5->table)+0xAFF);
 	memcpy(&result, ((void*)l5->table)+0xAFF, 8);
-	_assertEquals(expected, result);
+	_assertEquals(value, result);
 	return 0;
 }
 
@@ -65,7 +64,7 @@ int test_write_not_zero() {
 	if(l5 == NULL) { return 1;}
 	uint64_t result = 0;
 	memcpy(&result, ((uint8_t*)l5->table) + (addr & 0xFFF), 8);
-	_assertEquals(__bswap_64(value), result);
+	_assertEquals(value, result);
 	return 0;
 }
 
@@ -202,6 +201,18 @@ int test_big_little_endian() {
 	return 0;
 }
 
+int test_read_int32() {
+	struct memory* mem = init_memory();
+	uint64_t value = 0x123456789abcdeff;
+	uint64_t address =  0x2aff8;
+	_assertEquals(4, write_sim_memory(mem, address, 4, &value));
+	uint32_t read_value = 0;
+	_assertEquals(4, read_sim_memory(mem, address, 4, &read_value));
+	_assertEquals(read_value, 0x9abcdeff);
+
+	return 0;
+}
+
 int main(int argc, char **argv) {
 	int failed_tests = 0;
 	_test(test_init, "test_init");
@@ -217,6 +228,7 @@ int main(int argc, char **argv) {
 	_test(test_rw_uint64, "test_rw_uint64");
 	_test(test_error_in_sim, "test_error_in_sim");
 	_test(test_big_little_endian, "test_big_little_endian");
+	_test(test_read_int32, "test_read_int32");
 	if(failed_tests == 0 ){
 		printf("All tests passed!\n");
 	} else {

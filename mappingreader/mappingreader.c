@@ -34,11 +34,18 @@ int read_mapping(char* input_file_location, struct EventIDMapping* mapping) {
       mapping->guest_mem_store_before_exec = event_id;
     } else if(!strcmp(event_name, "guest_update_cr")) {
       mapping->guest_update_cr = event_id;
-    } //TODO instruction fetch
+    } else if(!strcmp(event_name, "guest_flush_tlb_invlpg")){
+      mapping->guest_flush_tlb_invlpg = event_id;
+    }
   }
   fclose(mapping_fp);
   return 0;
 }
 
-
-
+void print_mapping(struct EventIDMapping* mapping) {
+  printf("Trace event ID Mapping:\n");
+  printf("%d:\tguest_mem_load_before_exec\n", mapping->guest_mem_load_before_exec);
+  printf("%d:\tguest_mem_store_before_exec\n", mapping->guest_mem_store_before_exec);
+  printf("%d:\tguest_update_cr\n", mapping->guest_update_cr);
+  printf("%d:\tguest_flush_tlb_invlpg\n", mapping->guest_flush_tlb_invlpg);
+}

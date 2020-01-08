@@ -7,8 +7,10 @@
 
 #define AMOUNT_CONTROL_REGISTERS 8
 
-#define PG_MASK (1 << 31)
+#define CR0_PE_MASK (1 << 0) // Protected mode enabled (also paging)
+#define CR0_PG_MASK (1 << 31)
 #define PE_MASK (1 << 0)
+#define PG_MASK (1 << 31)
 
 typedef uint64_t* ControlRegisterValues;
 

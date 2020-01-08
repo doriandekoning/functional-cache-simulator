@@ -58,14 +58,14 @@ int read_sim_memory_internal(struct memory* mem, uint64_t address, size_t size, 
 	if(mem == NULL){
 		return 0;
 	}
-        if((address & 0xFFF) + size > (1<<12)){
-                printf("Reading cross border!\n");
-                size_t left_size = (1 << 12 ) - (address & 0xFFF);
-                size_t right_size = size - left_size;
-		printf("Splitting read, left:%x, right:%x\n", left_size, right_size);
-                return read_sim_memory_internal(mem, address, left_size, value)
-		+ read_sim_memory_internal(mem, address+left_size, right_size, ((uint8_t*)value)+left_size);
-        }
+	if((address & 0xFFF) + size > (1<<12)){
+			debug_printf("Reading cross border!\n");
+			size_t left_size = (1 << 12 ) - (address & 0xFFF);
+			size_t right_size = size - left_size;
+	debug_printf("Splitting read, left:%x, right:%x\n", left_size, right_size);
+			return read_sim_memory_internal(mem, address, left_size, value)
+	+ read_sim_memory_internal(mem, address+left_size, right_size, ((uint8_t*)value)+left_size);
+	}
 	struct memory* l1mem = find_in_level(mem, (address >>47) & 0x1, false);
 	//L1 (bits 48:39)
 	//      debug_printf("RL1: 0x%lx\n", (address >> 39) & 0x1FF);
@@ -94,7 +94,7 @@ int read_sim_memory_internal(struct memory* mem, uint64_t address, size_t size, 
 int read_sim_memory(struct memory* mem, uint64_t address, size_t size, void* value) {
 	void* value_copy = malloc(size);
 	int ret = read_sim_memory_internal(mem, address, size, value_copy);
-	convert_endianness(size, value_copy);
+	// convert_endianness(size, value_copy);
 	memcpy(value, value_copy, size);
 	free(value_copy);
 	return ret;
@@ -105,7 +105,7 @@ int write_sim_memory_internal(struct memory* mem, uint64_t address, size_t size,
 	if((address & 0xFFF) + size > (1<<12)){
 		size_t left_size = (1 << 12 ) - (address & 0xFFF);
 		size_t right_size = size - left_size;
-		printf("Splitting write, left: %d, right: %d!\n", left_size, right_size);
+		debug_printf("Splitting write: %016lx, left: %d, right: %d!\n", address, left_size, right_size);
 
 		debug_printf("Writing left:\t%p, %lx, %d, %p\n", mem, address, left_size, value);
 		debug_printf("Writing right:\t%p, %lx, %d, %p\n", mem, address+left_size, right_size, ((uint8_t*)value)+left_size);
@@ -139,7 +139,7 @@ int write_sim_memory(struct memory* mem, uint64_t address, size_t size, void* va
 	void* value_copy = malloc(size);
 	memcpy(value_copy, value, size);
 
-	convert_endianness(size, value_copy);
+	// convert_endianness(size, value_copy);
 	int ret = write_sim_memory_internal(mem, address, size, value_copy);
 	free(value_copy);
 	return ret;
