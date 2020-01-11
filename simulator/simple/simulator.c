@@ -58,7 +58,7 @@ int main(int argc, char **argv) {
 		printf("Unable to read header\n");
 		return 1;
 	}
-	CacheState cache_state = calloc(CACHE_AMOUNT_LINES, sizeof(struct CacheEntry*));
+	CacheState cache_state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES * ASSOCIATIVITY, sizeof(struct CacheLine));
 	if(cache_state == NULL) {
 		printf("Unable to allocate cache state!\n");
 		return 1;
@@ -95,7 +95,6 @@ int main(int argc, char **argv) {
 		if(!negative_delta_t) {
 			current_timestamp += delta_t;
 		}else{
-			printf("NEGATI(VE!\n");
 			current_timestamp -= delta_t;
 		}
 		if(next_event_id == trace_mapping.guest_mem_load_before_exec || next_event_id == trace_mapping.guest_mem_store_before_exec ) {
@@ -110,6 +109,7 @@ int main(int argc, char **argv) {
 				amount_writes++;
 			}
 			amount_accesses++;
+
 			physical_address = 0;
 
 			#ifdef SIMULATE_ADDRESS_TRANSLATION
@@ -193,6 +193,7 @@ int main(int argc, char **argv) {
 			printf("Unknown eventid: %x\n", next_event_id);
 			break;
 		}
+
 		if(amount_accesses % 10000000 == 0) {
 			printf("%lu million accesses processed!\n", amount_accesses / 1000000);
 		}

@@ -13,362 +13,44 @@ int tests_run = 0;
 //); } else {printf("Test %s failed!", "test");}} while(0)
 
 
-int test_get_cache_set_state() {
-    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES, sizeof(struct CacheEntry*));
-
-    //Test when just getting the first line state
-    struct CacheEntry firstEntry;
-    state[0] = &firstEntry;
-    _assert(get_cache_set_state(state, 0, 0) == &firstEntry);
-
-    //Test when getting the line state from another cpu
-    struct CacheEntry secondCPUEntry;
-    state[AMOUNT_CACHE_SETS] = &secondCPUEntry;
-    _assert(get_cache_set_state(state, 0, 1) == &secondCPUEntry);
-
-
-    //Test getting the line state not from the first cacheline
-    struct CacheEntry middleEntry;
-    state[999] = &middleEntry;
-    _assert(get_cache_set_state(state, 999 << 6, 0) == &middleEntry);
-
-    //Test getting midle entry in another cpu
-    struct CacheEntry middleOtherCPUEntry;
-    state[999 + (2*AMOUNT_CACHE_SETS)] = &middleOtherCPUEntry;
-    _assert(get_cache_set_state(state, 999 << 6, 2) == &middleOtherCPUEntry);
-
-    return 0;
-}
-
-int test_get_cache_entry_state() {
-    struct CacheEntry firstEntry = {.tag = 1};
-    struct CacheEntry thirdEntry = {.tag = 3};
-    struct CacheEntry secondEntry = {.tag = 2, .prev = &firstEntry, .next = &thirdEntry};
-    firstEntry.next = &secondEntry;
-    thirdEntry.prev = &secondEntry;
-
-    //Test get first entry
-    _assert(&firstEntry == get_cache_entry_state(&firstEntry, (1 << 18)));
-    //Test get second entry
-    _assert(&secondEntry == get_cache_entry_state(&firstEntry, (2 << 18)));
-    //Test get third entry
-    _assert(&thirdEntry == get_cache_entry_state(&firstEntry, (3 << 18)));
-    //Test not found
-    _assert(NULL == get_cache_entry_state(&firstEntry, (81 << 18)));
-    return 0;
-}
-
-int test_set_cache_set_state() {
-    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES, sizeof(struct CacheEntry*));
-
-    //Test set in empty location
-    struct CacheEntry newEntry = {.tag=10};
-    set_cache_set_state(state, &newEntry, 10 << 6, 0);
-    _assert(state[10]  == &newEntry);
-
-    //Test override
-    struct CacheEntry new10Entry = {.tag=10};
-    struct CacheEntry old10Entry = {.tag=11};
-    state[12] = &old10Entry;
-    set_cache_set_state(state, &new10Entry, 12 << 6, 0);
-    _assert(state[12]  == &new10Entry);
-
-    //Test set in different cpu
-     struct CacheEntry otherCPUEntry = {.tag=10};
-    set_cache_set_state(state, &newEntry, 10 << 6, 2);
-    _assert(state[10 + (2 * AMOUNT_CACHE_SETS)] == &newEntry);
-
-    return 0;
-}
-
-int test_remove_item() {
-    struct CacheEntry next;
-    struct CacheEntry prev;
-
-    //Test removing item with only a next
-    struct CacheEntry onlyNext = {.next = &next};
-    next.prev = &onlyNext;
-    remove_item(&onlyNext);
-    _assert(NULL == next.prev);
-
-    //Test removing item with only a next
-    struct CacheEntry onlyPrev = {.prev = &prev};
-    prev.next = &onlyPrev;
-    remove_item(&onlyPrev);
-    _assert(NULL == prev.next);
-
-
-    //Test remove with prev and next
-    struct CacheEntry both = {.prev = &prev, .next = &next};
-    next.prev = &both;
-    prev.next = &both;
-    remove_item(&both);
-    _assert(&next == prev.next);
-    _assert(&prev == next.prev);
-    return 0;
-}
-
-int test_append_item_empty_list() {
-    struct CacheEntry new;
-    _assert(append_item(NULL, &new) == &new);
-    return 0;
-}
-
-int test_append_item() {
-    struct CacheEntry first = {};
-    struct CacheEntry second = {};
-    CacheSetState result = append_item(&first, &second);
-    _assert(result == &first);
-    _assert(first.next == &second);
-    _assert(second.prev = &first);
-
-    return 0;
-}
-
-int test_append_item_long_list() {
-    struct CacheEntry first = {};
-    struct CacheEntry second = {};
-    second.prev = &first;
-    first.next = &second;
-    struct CacheEntry third = {};
-    third.prev = &second;
-    second.next = &third;
-    struct CacheEntry fourth = {};
-    fourth.prev = &third;
-    third.next = &fourth;
-
-    struct CacheEntry new = {};
-    CacheSetState result = append_item(&first, &new);
-    _assert(result == &first);
-    _assert(new.prev == &fourth);
-    _assert(fourth.next = &new);
-
-    return 0;
-}
-
-int test_move_first_item_back() {
-    struct CacheEntry first = {};
-    struct CacheEntry second = {};
-    second.prev = &first;
-    first.next = &second;
-    struct CacheEntry third = {};
-    third.prev = &second;
-    second.next = &third;
-
-    //Move first back
-    move_item_back(&first);
-    _assert(first.prev == &third);
-    _assert(third.next == &first);
-    _assert(second.prev == NULL);
-
-    return 0;
-}
-
-int test_move_midle_item_back() {
-    struct CacheEntry first = {};
-    struct CacheEntry second = {};
-    second.prev = &first;
-    first.next = &second;
-    struct CacheEntry third = {};
-    third.prev = &second;
-    second.next = &third;
-
-    //Move first back
-    move_item_back(&second);
-    _assert(first.next == &third);
-    _assert(third.prev == &first);
-    _assert(second.prev == &third);
-    _assert(first.prev == NULL);
-    return 0;
-}
-
-
-int test_move_fourth_item_back() {
-    CacheSetState list = NULL;
-    struct CacheEntry fourth;
-    for(int i = 0; i < 8; i++) {
-        struct CacheEntry new = {tag: i};
-        if(i == 4)fourth = new;
-        list = append_item(list, &new);
-    }
-    //Move first back
-    move_item_back(&fourth);
-    int expectedOrder[8] = {7, 6, 5, 3, 2, 1, 0, 4};
-    struct CacheEntry* next = list;
-    int i = 0;
-    while(next != NULL) {
-        printf("i:%d Expected:%d, actual:%d\n",i, expectedOrder[i], next->tag);
-        _assert(expectedOrder[i] == next->tag);
-        i++;
-        next = next->next;
-    }
-
-    return 0;
-}
-
-int test_list_length_empty() {
-    _assert(0 == list_length(NULL));
-    return 0;
-}
-
-int test_list_length_single_item() {
-    struct CacheEntry item = {};
-    _assert(1 == list_length(&item));
-    return 0;
-}
-
-int test_list_length_multiple() {
-    struct CacheEntry first = {};
-    struct CacheEntry second = {};
-    second.prev = &first;
-    first.next = &second;
-    struct CacheEntry third = {};
-    third.prev = &second;
-    second.next = &third;
-    struct CacheEntry fourth = {};
-    fourth.prev = &third;
-    third.next = &fourth;
-
-    _assert(list_length(&first) == 4);
-    _assert(list_length(&second) == 4);
-    _assert(list_length(&third) == 4);
-    _assert(list_length(&fourth) == 4);
-
-    return 0;
-}
-
-int test_get_head_empty() {
-    _assert(NULL == get_head(NULL));
-    return 0;
-}
-
-int test_get_head_single() {
-    struct CacheEntry entry = {};
-    _assert(&entry == get_head(&entry));
-    return 0;
-}
-
-int test_get_head() {
-    struct CacheEntry first = {};
-    struct CacheEntry second = {};
-    second.prev = &first;
-    first.next = &second;
-    struct CacheEntry third = {};
-    third.prev = &second;
-    second.next = &third;
-    struct CacheEntry fourth = {};
-    fourth.prev = &third;
-    third.next = &fourth;
-
-    _assert(get_head(&first) == &first);
-    _assert(get_head(&second) == &first);
-    _assert(get_head(&third) == &first);
-    _assert(get_head(&fourth) == &first);
-
-    return 0;
-}
-
-
-CacheSetState setupCacheSetState() {
-    struct CacheEntry* first = calloc(1, sizeof(struct CacheEntry));
-    first->tag = 1;
-    struct CacheEntry* second = calloc(1, sizeof(struct CacheEntry));
-    second->tag = 2;
-    second->prev = first;
-    first->next = second;
-    struct CacheEntry* third = calloc(1, sizeof(struct CacheEntry));
-    third->tag = 3;
-    third->prev = second;
-    second->next = third;
-    struct CacheEntry* fourth = calloc(1, sizeof(struct CacheEntry));
-    fourth->tag = 4;
-    fourth->prev = third;
-    third->next = fourth;
-    return first;
-}
-
-int test_apply_state_change_evict(){
-    CacheSetState state = setupCacheSetState();
-    get_head(state);
-    struct statechange change = {.new_state = STATE_INVALID};
-    struct CacheEntry* fourth = state->next->next->next;
-    CacheSetState new_state = apply_state_change(state, state->next->next, change, 1);
-    _assert(state->next->next == fourth);
-    _assert(new_state == state);
-    _assert(list_length(new_state) == 3);
-
-    return 0;
-}
-
-int test_apply_state_change_evict_head(){
-    CacheSetState state = setupCacheSetState();
-    struct statechange change = {.new_state = STATE_INVALID};
-    struct CacheEntry* second = state->next;
-    CacheSetState new_state = apply_state_change(state, state, change, 0);
-    _assert(new_state == second);
-    _assert(list_length(new_state) == 3);
-    return 0;
-}
-
-int test_apply_state_change_modified_third(){
-    CacheSetState state = setupCacheSetState();
-    get_head(state);
-    struct statechange change = {.new_state = STATE_MODIFIED};
-    CacheSetState new_state = apply_state_change(state, state->next->next, change, 0);
-    _assert(new_state == state);
-    _assert(list_length(new_state) == 4);
-    _assert(state->next->next->tag == 4);
-    _assert(state->next->next->next->tag == 3);
-    _assert(state->next->next->next->state == STATE_MODIFIED);
-    return 0;
-}
-
-int test_apply_state_change_modified_first(){
-    CacheSetState state = setupCacheSetState();
-    get_head(state);
-    struct statechange change = {.new_state = STATE_MODIFIED};
-    struct CacheEntry* second = state->next;
-    CacheSetState new_state = apply_state_change(state, state, change, 0);
-    _assert(new_state == second);
-    _assert(list_length(new_state) == 4);
-    _assert(new_state->next->next->tag == 4);
-    _assert(new_state->next->next->next->tag == 1);
-    _assert(new_state->next->next->next->state == STATE_MODIFIED);
-    return 0;
-}
-
-int test_apply_state_insert(){
-    CacheSetState state = setupCacheSetState();
-    get_head(state);
-    struct statechange change = {.new_state = STATE_MODIFIED};
-    struct CacheEntry* second = state->next;
-    CacheSetState new_state = apply_state_change(state, NULL, change, (9 << 18));
-    _assert(state == new_state);
-    _assert(list_length(new_state) == 5);
-    _assert(state->next->next->next->next->state == STATE_MODIFIED);
-    _assert(state->next->next->next->next->tag == 9);
-
-    return 0;
-}
-
-int test_apply_state_empty(){
-    struct statechange change = {.new_state = STATE_MODIFIED};
-    CacheSetState new_state = apply_state_change(NULL, NULL, change, 9);
-    _assert(list_length(new_state) == 1);
-    _assert(new_state->state == STATE_MODIFIED);
-    _assert(new_state->tag == 9);
-    return 0;
-}
-
 int test_perform_cache_access_twice_same() {
-    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES, sizeof(struct CacheEntry*));
+    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES * ASSOCIATIVITY,  sizeof(struct CacheLine));
     _assert(!perform_cache_access(state, 0, 0x11, true));
     _assert(perform_cache_access(state, 0, 0x11, true));
+    return 0;
 }
 
+int test_perform_cache_access_twice_twice_same() {
+    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES * ASSOCIATIVITY,  sizeof(struct CacheLine));
+    _assert(!perform_cache_access(state, 0, 0x11, true));
+    _assert(!perform_cache_access(state, 0, 0x11 + (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS), true));
+    _assert(perform_cache_access(state, 0, 0x11, true));
+    _assert(perform_cache_access(state, 0, 0x11 + (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS), true));
+    return 0;
+}
 
-int test_perform_cache_access_evict() {
-    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES, sizeof(struct CacheEntry*));
+int test_perform_cache_access_read_write() {
+    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES * ASSOCIATIVITY,  sizeof(struct CacheLine));
+    _assert(STATE_INVALID == get_line_state(state, 0, 0x11, NULL));
+    _assert(!perform_cache_access(state, 0, 0x11, false));
+    _assert(STATE_SHARED == get_line_state(state, 0, 0x11, NULL));
+    _assert(perform_cache_access(state, 0, 0x11, true));
+    _assert(STATE_MODIFIED == get_line_state(state, 0, 0x11, NULL));
+    return 0;
+}
+
+int test_perform_cache_access_write_read() {
+    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES * ASSOCIATIVITY, sizeof(struct CacheLine));
+    _assert(STATE_INVALID == get_line_state(state, 0, 0x11, NULL));
+    _assert(!perform_cache_access(state, 0, 0x11, true));
+    _assert(STATE_MODIFIED == get_line_state(state, 0, 0x11, NULL));
+    _assert(perform_cache_access(state, 0, 0x11, false));
+    _assert(STATE_MODIFIED == get_line_state(state, 0, 0x11, NULL));
+    return 0;
+}
+
+int test_perform_cache_access_evict_oldest() {
+    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES * ASSOCIATIVITY, sizeof(struct CacheLine));
     // Each cache set contains (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS) lines, thus if we fill all those and add one additional one
     // the first should be evicted
     for(int i = 0; i < (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS) +1; i++) {
@@ -379,68 +61,71 @@ int test_perform_cache_access_evict() {
     for(int i = 2; i < (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS); i++) {
         _assert(perform_cache_access(state, 0, 0x11 + (i*CACHE_AMOUNT_LINES), true));
     }
+    return 0;
 }
 
-int test_perform_cache_access_full_line_no_evict() {
-    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES, sizeof(struct CacheEntry*));
-    //Fill cache line 0x11
-    for(int i = 0; i < (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS); i++) {
-        _assert(!perform_cache_access(state, 0, 0x11 + (i*CACHE_AMOUNT_LINES), true));
+int test_perform_cache_access_evict_invalid() {
+    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES * ASSOCIATIVITY, sizeof(struct CacheLine));
+    for(int i = 0; i < (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS) - 2; i++) { // Fill cache set partially
+        _assert(!perform_cache_access(state, 0, 0x11 + (i*CACHE_AMOUNT_LINES), false));
     }
-    //Access the 5th entry (this should put it in front of the lru queue)
-    _assert(perform_cache_access(state, 0, 0x11 + (4*CACHE_AMOUNT_LINES), true));
-    // Check that this has not evicted anything
-    for(int i = 0; i < (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS); i++) {
-        _assert(perform_cache_access(state, 0, 0x11 + (i*CACHE_AMOUNT_LINES), true));
+    for(int i = 0; i < (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS) - 2; i++) { // Fill cache set partially
+        _assert(STATE_SHARED == get_line_state(state, 0, 0x11 + (i*CACHE_AMOUNT_LINES), NULL));
     }
+    //Insert an additional line which should not evict anything
+    perform_cache_access(state, 0, 0x11 + ((CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS)*CACHE_AMOUNT_LINES), false);
+
+    for(int i = 0; i < (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS); i++) { // Fill cache set partially
+        if(i == (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS)-2)continue;
+        if(i == (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS)-1)continue;
+        _assert(perform_cache_access(state, 0, 0x11 + (i*CACHE_AMOUNT_LINES), false));
+        _assert(STATE_SHARED == get_line_state(state, 0, 0x11 + (i*CACHE_AMOUNT_LINES), NULL));
+    }
+    return 0;
+}
+
+int test_write_on_other_cpu_invalidates() {
+    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES * ASSOCIATIVITY, sizeof(struct CacheLine));
+    //Insert entry into cache
+    uint64_t address = 0x1234abc;
+    perform_cache_access(state, 0, address, false);
+    _assert(STATE_SHARED == get_line_state(state, 0, address, NULL));
+
+    // Write entry on other cpu
+    perform_cache_access(state, 1, address, true);
+    _assert(STATE_INVALID == get_line_state(state, 0, address, NULL));
+    _assert(STATE_MODIFIED == get_line_state(state, 1, address, NULL));
+    return 0;
 }
 
 
-int test_perform_cache_access_full_line_move_front() {
-    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES, sizeof(struct CacheEntry*));
-    //Fill cache line 0x11
-    for(int i = 0; i < (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS); i++) {
-        _assert(!perform_cache_access(state, 0, 0x11 + (i*CACHE_AMOUNT_LINES), true));
-    }
-    //Access the 1th entry again (this should put it in the front of the lru queue)
-    _assert(perform_cache_access(state, 0, 0x11, true));
-    // Insert another cache line
-    _assert(!perform_cache_access(state, 0, 0x11 + (20*CACHE_AMOUNT_LINES), true));
-    // Check that the 2nd entry has been evicted
-    for(int i = 0; i < (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS); i++) {
-        _assert((i == 1) == perform_cache_access(state, 0, 0x11 + (i*CACHE_AMOUNT_LINES), true));
-    }
-}
 
+int test_read_on_other_cpu_keeps_shared() {
+    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES * ASSOCIATIVITY, sizeof(struct CacheLine));
+    //Insert entry into cache
+    uint64_t address = 0x1234abc;
+    perform_cache_access(state, 0, address, false);
+    _assert(STATE_SHARED == get_line_state(state, 0, address, NULL));
+
+    // Write entry on other cpu
+    perform_cache_access(state, 1, address, false);
+    _assert(STATE_SHARED == get_line_state(state, 0, address, NULL));
+    _assert(STATE_SHARED == get_line_state(state, 1, address, NULL));
+    return 0;
+}
 
 
 int main(int argc, char **argv) {
-    init_cachestate_masks(12, 6);
+    init_cachestate_masks(12, OFFSET_BITS);
     int failed_tests = 0;
-    _test(test_get_cache_set_state, "test_get_cache_set_state");
-    _test(test_get_cache_entry_state, "test_get_cache_entry_state");
-    _test(test_set_cache_set_state, "test_set_cache_set_state");
-    _test(test_remove_item, "test_remove_item");
-    _test(test_append_item_empty_list, "test_append_item_empty_list");
-    _test(test_append_item_long_list, "test_append_item_long_list");
-    _test(test_append_item, "test_append_item");
-    _test(test_move_first_item_back, "test_move_first_item_back");
-    _test(test_list_length_empty, "test_list_length_empty");
-    _test(test_list_length_single_item, "test_list_length_single_item");
-    _test(test_list_length_multiple, "test_list_length_multiple");
-    _test(test_get_head_empty, "test_get_head_empty");
-    _test(test_get_head_single, "test_get_head_single");
-    _test(test_get_head, "test_get_head");
-    _test(test_apply_state_change_evict, "test_apply_state_change_evict");
-    _test(test_apply_state_change_evict_head, "test_apply_state_change_evict_head");
-    _test(test_apply_state_change_modified_third, "test_apply_state_change_modified_third");
-    _test(test_apply_state_change_modified_first, "test_apply_state_change_modified_first");
-    _test(test_apply_state_insert, "test_apply_state_insert");
     _test(test_perform_cache_access_twice_same, "test_perform_cache_access_twice_same");
-    _test(test_perform_cache_access_evict, "test_perform_cache_access_evict");
-    _test(test_perform_cache_access_full_line_no_evict, "test_perform_cache_access_evict_middle");
-    _test(test_move_fourth_item_back, "test_move_fourth_item_back");
-    _test(test_perform_cache_access_full_line_move_front, "test_perform_cache_access_full_line_move_front");
+    _test(test_perform_cache_access_twice_twice_same, "test_perform_cache_access_twice_twice_same");
+    _test(test_perform_cache_access_evict_oldest, "test_perform_cache_access_evict_oldest");
+    _test(test_perform_cache_access_read_write, "test_perform_cache_access_read_write");
+    _test(test_perform_cache_access_write_read, "test_perform_cache_access_write_read");
+    _test(test_perform_cache_access_evict_invalid, "test_perform_cache_access_evict_invalid");
+    _test(test_write_on_other_cpu_invalidates, "test_write_on_other_cpu_invalidates");
+    _test(test_read_on_other_cpu_keeps_shared, "test_read_on_other_cpu_keeps_shared");
     if(failed_tests == 0 ){
         printf("All tests passed!\n");
     } else {

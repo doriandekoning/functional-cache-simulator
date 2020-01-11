@@ -26,76 +26,113 @@ const int BUS_REQUEST_READX = 2;
 const int BUS_REQUEST_UPGR = 3;
 const int BUS_REQUEST_FLUSH = 4;
 
-CacheSetState check_eviction(CacheSetState state) {
-	int length = list_length(state);
-	if(length > ASSOCIATIVITY) {
-		if(state->prev != NULL){
-			printf("ERROR prev is not NULL");
+
+int get_line_state(CacheState state, uint64_t cpu, uint64_t address, uint64_t* line_index) {
+
+	int set_index = (cpu * CACHE_AMOUNT_LINES * ASSOCIATIVITY) + ((address & ADDRESS_INDEX_MASK) * ASSOCIATIVITY);
+	for(int i = 0; i < ASSOCIATIVITY; i++) {
+		if(state[set_index+i].tag == (address & ADDRESS_TAG_MASK)){
+			if(line_index != NULL) {
+				*line_index = set_index+i;
+			}
+			return state[set_index+i].state;
 		}
-		struct CacheEntry* lru = get_head(state);
-		if(lru->state == STATE_MODIFIED) {
-			// amount_writebacks++;
-			//TODO log writeback as cache access
-		}
-		struct statechange change;
-		change.new_state = STATE_INVALID;
-		return apply_state_change(state, lru, change, 0);
 	}
-	return state;
+	return STATE_INVALID;
 }
 
+
+void handle_bus_request(CacheState state, uint64_t address, int origin_cpu, int request) {
+	if(request == BUS_REQUEST_NOTHING){
+		return;
+	}
+
+	int next_bus_req = BUS_REQUEST_NOTHING;
+	int next_bus_req_cpu;
+
+	for(int cpu_idx = 0; cpu_idx < AMOUNT_SIMULATED_PROCESSORS; cpu_idx++){
+		if(cpu_idx == origin_cpu)continue;
+		uint64_t line_index;
+		int cur_state = get_line_state(state, cpu_idx, address, &line_index);
+
+		struct statechange state_change = get_msi_state_change_by_bus_request(cur_state, request);
+
+		if(state_change.new_state != cur_state) {
+			state[line_index].state = state_change.new_state;
+		}
+		if(state_change.bus_request != BUS_REQUEST_NOTHING){
+			next_bus_req = state_change.bus_request;
+			next_bus_req_cpu = cpu_idx;
+		}
+	}
+
+	if(next_bus_req != BUS_REQUEST_NOTHING) {
+		handle_bus_request(state, address, next_bus_req_cpu, next_bus_req);
+	}
+}
 
 bool perform_cache_access(CacheState state, uint64_t cpu, uint64_t address, bool write) {
-	int cur_state;
-	struct statechange state_change; //TODO check if this can be refactored to not be allocated each time
-	CacheSetState cache_set_state;
-	CacheEntryState entry_state;
-	debug_printf("Finding cache set state for access with address: %lx at cpu %d\n", address, cpu);
-	cache_set_state = get_cache_set_state(state, address, cpu);
-
-	entry_state = get_cache_entry_state(cache_set_state, address);
-	cur_state = STATE_INVALID;
-	if(entry_state != NULL) {
-		cur_state = entry_state->state;
+	int current_state = STATE_INVALID;
+	int index = (cpu * CACHE_AMOUNT_LINES * ASSOCIATIVITY) + ((address & ADDRESS_INDEX_MASK) * ASSOCIATIVITY);
+	bool found = false;
+	for(int i = 0; i < ASSOCIATIVITY; i++){
+		struct CacheLine* entry = &(state[index + i]);
+		if(entry->state != STATE_INVALID){
+			if(entry->tag == (address & ADDRESS_TAG_MASK)) {
+				//Found
+				current_state = entry->state;
+				struct statechange state_change = get_msi_state_change(current_state, write);
+				entry->state = state_change.new_state;
+				for(int j = 0; j < ASSOCIATIVITY; j++) {
+					if(j==i) continue;
+					if(state[index+j].state != STATE_INVALID && state[index+j].lru < entry->lru)state[index+j].lru++;
+				}
+				entry->lru = 0;
+				handle_bus_request(state, address, cpu, state_change.bus_request);
+				return true;
+			}
+		}
 	}
 
-	state_change = get_msi_state_change(cur_state, write); //TODO should pass pointer here
-	CacheSetState new = apply_state_change(cache_set_state, entry_state, state_change, address);
-	new = check_eviction(new);
-	set_cache_set_state(state, new, address, cpu);
-
-	//TODO update state in other cpus based on bus message
-
-	return (entry_state != NULL) && (entry_state->state != STATE_INVALID); //TODO this changes when simulating multiple cpu's
+	struct statechange state_change = get_msi_state_change(STATE_INVALID, write);
+	int lru_index = -1;
+	int highest_lru_value = -1;
+	// See if there is an INVALID entry
+	for(int i = 0; i < ASSOCIATIVITY; i++) {
+		if(state[index+i].state == STATE_INVALID){
+			state[index+i].tag = (address & ADDRESS_TAG_MASK);
+			state[index+i].state = state_change.new_state;
+			state[index+i].lru = 0;
+			for(int j = 0; j < ASSOCIATIVITY; j++) {
+				if(i == j) continue;
+				if(state[index+j].state != STATE_INVALID)state[index+j].lru++;
+			}
+			handle_bus_request(state, address, cpu, state_change.bus_request);
+			return false;
+		}
+		if(state[index+i].lru > highest_lru_value) {
+			highest_lru_value = state[index+i].lru;
+			lru_index = i;
+		}
+	}
+	// No invalid entry found overwrite the entry with the higest lru index
+	state[index+lru_index].state = state_change.new_state;
+	state[index+lru_index].lru = 0;
+	state[index+lru_index].tag = (address & ADDRESS_TAG_MASK);
+	for(int i = 0; i < ASSOCIATIVITY; i++) {
+		if(i == lru_index) continue;
+		state[index+i].lru++;
+	}
+	handle_bus_request(state, address, cpu, state_change.bus_request);
+	return false;
 }
+
 
 
 void init_cachestate_masks(int indexsize, int offsetsize) {
         ADDRESS_OFFSET_MASK = setupmask(0,(offsetsize-1));
         ADDRESS_TAG_MASK = setupmask(offsetsize+indexsize,63);
         ADDRESS_INDEX_MASK = setupmask(offsetsize,(indexsize+offsetsize-1));
-}
-
-CacheSetState get_cache_set_state(CacheState state, uint64_t address, uint64_t cpu) {
-	return state[(AMOUNT_CACHE_SETS * cpu) + ADDRESS_INDEX(address)];
-}
-
-void set_cache_set_state(CacheState state, CacheSetState new, uint64_t address, uint64_t cpu) {
-	state[(AMOUNT_CACHE_SETS * cpu)  + ADDRESS_INDEX(address)] = (struct CacheEntry*)new;
-}
-
-
-// Returns the cacheEntry assosciated with the given address or NULL if not present in the cache
-CacheEntryState get_cache_entry_state(CacheSetState cacheSetState, uint64_t address) {
-	uint64_t search_tag = ADDRESS_TAG(address);
-	CacheEntryState next = cacheSetState;
-	while(next != NULL) {
-		if(next->tag == search_tag) {
-			return next;
-		}
-		next = next->next;
-	}
-	return NULL;
 }
 
 
@@ -160,108 +197,5 @@ struct statechange get_msi_state_change_by_bus_request(int current_state, int bu
 		exit(7);
 	}
 	return ret;
-}
-
-
-
-CacheSetState apply_state_change(CacheSetState cacheLineState, struct CacheEntry* entry, struct statechange statechange, uint64_t address) {
-	struct CacheEntry* head = get_head(cacheLineState);
-	if(entry != NULL && statechange.new_state == STATE_INVALID) {
-		//Remove line from cache
-		if(entry == head){
-			head = entry->next;
-		}
-		remove_item(entry);
-		free(entry);
-		return head;
-	} else if (entry != NULL) {
-		// Move entry to back (front is LRU)
-		if(entry == head) {
-			head = entry->next;
-		}
-		entry->state = statechange.new_state;
-		move_item_back(entry);
-
-	} else {
-		// Add new entry to cache and evict oldest one if more than 8
-		struct CacheEntry* new = calloc(1, sizeof(struct CacheEntry));
-		if(new == NULL) {
-			printf("Could not allocate new cacheentry\n");
-			exit(1);
-		}
-		new->tag = ADDRESS_TAG(address);
-		new->state = statechange.new_state;
-
-		cacheLineState = append_item(cacheLineState, new);
-	}
-	return get_head(cacheLineState); //TODO optimize
-}
-
-
-void remove_item(struct CacheEntry* entry) {
-	if(entry->prev != NULL) {
-		entry->prev->next = entry->next;
-	}
-	if(entry->next != NULL) {
-		entry->next->prev = entry->prev;
-	}
-}
-
-CacheSetState append_item(CacheSetState list, struct CacheEntry* newEntry) {
-	if(list == NULL){
-		return newEntry;
-	}
-	CacheSetState next = list;
-	while(next->next != NULL) {
-		next = next->next;
-	}
-	next->next = newEntry;
-	newEntry->prev = next;
-	newEntry->next = NULL;
-	return list;
-}
-
-void move_item_back(struct CacheEntry* entry) {
-	struct CacheEntry* end = entry;
-	while(end->next != NULL) {
-		end = end->next;
-	}
-	if(end != entry) {
-		if(entry->prev != NULL) {
-			entry->prev->next = entry->next;
-		}
-		if(entry->next != NULL) {
-			entry->next->prev = entry->prev;
-		}
-		end->next = entry;
-		entry->prev = end;
-		entry->next = NULL;
-	}
-}
-
-int list_length(struct CacheEntry* list) {
-	struct CacheEntry* next = list;
-	int size = 0;
-	while(next != NULL){
-		size++;
-		next = next->next;
-	}
-	if(list == NULL || list->prev == NULL) {
-		return size;
-	}
-	struct CacheEntry* prev = list->prev;
-	while(prev != NULL) {
-		size++;
-		prev = prev->prev;
-	}
-	return size;
-}
-
-struct CacheEntry* get_head(struct CacheEntry* list) {
-	struct CacheEntry* head = list;
-	while(head != NULL && head->prev != NULL) {
-		head = head->prev;
-	}
-	return head;
 }
 
