@@ -1,16 +1,67 @@
-#include "state.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "state.h"
+#include "test.h"
+#include "memory/memory.h"
+
 int tests_run = 0;
 
-#define FAIL() printf("\n Failure in %s() line %d\n", __func__, __LINE__);
-#define _assert(test) do {if (!(test)) { FAIL(); return 1; } } while(0)
 
-#define _test(test, testname) do {int result = test(); failed_tests+= result; if(result) { printf("Failed %s!\n", testname);}else{printf("Passed %s\n", testname);}} while(0)
-//;failed_tests+=result;if(result){printf("Test passed!\n"
-//); } else {printf("Test %s failed!", "test");}} while(0)
+int test_setup_state_memory() {
+    struct Memory* mem = init_memory();
+    struct CacheState* created_state = setup_cache(NULL, mem, false, 100, 10);
+    _assertEquals(created_state->size, 100);
+    _assertEquals(created_state->line_size, 10);
+    _assertEquals(created_state->memory, mem);
+    _assertEquals(created_state->parent_cache, NULL);
+    _assertEquals(created_state->amount_children, 0);
+    return 0;
+}
+
+int test_setup_state_parent_cache() {
+    int parent_size = 128;
+    struct CacheState* parent = setup_cache(NULL, init_memory(), false, parent_size, 10);
+    struct CacheState* created_cache = setup_cache(parent, NULL, false, parent_size/8, 10);
+    _assertEquals(created_cache->parent_cache, parent);
+    _assertEquals(parent->amount_children, 1);
+    _assertEquals(parent->children[0], created_cache);
+    return 0;
+}
+
+int test_setup_state_parent_size_not_correct() {
+    int parent_size = 128;
+    struct CacheState* parent = setup_cache(NULL, init_memory(), false, parent_size, 10);
+    struct CacheState* created_cache = setup_cache(parent, NULL, false, (parent_size/8) + 1, 10);
+    _assertEquals(created_cache, NULL);
+    _assertEquals(parent->amount_children, 0);
+    return 0;
+}
+
+int test_setup_state_parent_cache_line_sizes_not_equal(){
+    int parent_size = 128;
+    struct CacheState* parent = setup_cache(NULL, init_memory(), false, parent_size, 10);
+    struct CacheState* created_cache = setup_cache(parent, NULL, false, (parent_size/8) , 12);
+    _assertEquals(created_cache, NULL);
+    _assertEquals(parent->amount_children, 0);
+    return 0;
+}
+
+int test_setup_state_parent_has_64_children() {
+    int parent_size = 128;
+    int amount_children = 7;
+    struct CacheState* parent = setup_cache(NULL, init_memory(), false, parent_size, 10);
+    for(int i = 0; i < amount_children; i++) {
+        struct CacheState* created_cache = setup_cache(parent, NULL, false, (parent_size/8) , 10);
+        _assertEquals(created_cache->parent_cache, parent);
+    }
+    _assertEquals(parent->amount_children, amount_children);
+    _assertEquals(parent->cur_size_children_array, (amount_children + (8 -(amount_children%8))));
+    return 0;
+}
+
+
 
 
 int test_perform_cache_access_twice_same() {
@@ -118,6 +169,10 @@ int test_read_on_other_cpu_keeps_shared() {
 int main(int argc, char **argv) {
     init_cachestate_masks(12, OFFSET_BITS);
     int failed_tests = 0;
+    _test(test_setup_state_memory, "test_setup_state_memory");
+    _test(test_setup_state_parent_cache, "test_setup_state_parent_cache");
+    _test(test_setup_state_parent_size_not_correct, "test_setup_state_parent_size_not_correct");
+    _test(test_setup_state_parent_cache_line_sizes_not_equal, "test_setup_state_parent_cache_line_sizes_not_equal");
     _test(test_perform_cache_access_twice_same, "test_perform_cache_access_twice_same");
     _test(test_perform_cache_access_twice_twice_same, "test_perform_cache_access_twice_twice_same");
     _test(test_perform_cache_access_evict_oldest, "test_perform_cache_access_evict_oldest");
@@ -126,6 +181,7 @@ int main(int argc, char **argv) {
     _test(test_perform_cache_access_evict_invalid, "test_perform_cache_access_evict_invalid");
     _test(test_write_on_other_cpu_invalidates, "test_write_on_other_cpu_invalidates");
     _test(test_read_on_other_cpu_keeps_shared, "test_read_on_other_cpu_keeps_shared");
+    _test(test_setup_state_parent_has_64_children, "test_setup_state_parent_has_64_children");
     if(failed_tests == 0 ){
         printf("All tests passed!\n");
     } else {

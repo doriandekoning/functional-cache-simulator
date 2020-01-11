@@ -199,3 +199,61 @@ struct statechange get_msi_state_change_by_bus_request(int current_state, int bu
 	return ret;
 }
 
+
+
+
+struct CacheState* setup_cache(struct CacheState* parent, struct Memory* memory, bool write_back, size_t size, size_t line_size) {
+	//TODO make it so memory can be a parent
+
+	if(parent != NULL && memory != NULL) {
+		printf("Error during cache setup: both parent and memory cannot both be set\n");
+		return NULL;
+	}
+
+	struct CacheState* new_state = malloc(sizeof(struct CacheState));
+
+	if(parent != NULL) {
+		if(parent->size % size != 0){
+			printf("Error during cache setup: Parent size %d is not a multiple of size: %d\n", parent->size, size);
+			return NULL;
+		}
+		if(parent->line_size != line_size) {
+			printf("Error during cache setup: Parent line size should be equal (%d) but is not (%d)\n", parent->line_size, line_size);
+			return NULL;
+		}
+		add_child(parent, new_state);
+
+	}else if(memory != NULL){
+		new_state->memory = memory;
+	}else{
+		printf("Error during cache setup: both parent and memory cannot be null\n");
+		return NULL;
+	}
+
+	new_state->amount_children = 0;
+	new_state->children = NULL;
+	new_state->write_back = write_back;
+	new_state->size = size;
+	new_state->line_size = line_size;
+	new_state->cur_size_children_array = 0;
+
+	return new_state;
+
+}
+
+
+void add_child(struct CacheState* parent, struct CacheState* child) {
+	// Check if array needs to be sized up
+	if(parent->amount_children == parent->cur_size_children_array){
+		struct CacheState** old_children = parent->children;
+		parent->children = malloc(sizeof(struct CacheState*)* (parent->cur_size_children_array+8));
+		for(int i = 0; i < parent->cur_size_children_array; i++) {
+			parent->children[i] = old_children[i];
+		}
+		parent->cur_size_children_array += 8;
+		free(old_children);
+	}
+	parent->children[parent->amount_children] = child;
+	parent->amount_children++;
+	child->parent_cache = parent;
+}
