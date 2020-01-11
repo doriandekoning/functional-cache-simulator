@@ -5,10 +5,13 @@
 #include "config.h"
 #include "pipereader/pipereader.h"
 
-extern const int STATE_INVALID;
-extern const int STATE_INVALID;
-extern const int STATE_SHARED;
-extern const int STATE_MODIFIED;
+extern const int STATE_INVALID; //Deprecated TODO remove
+extern const int STATE_SHARED;	//Deprecated TODO remove
+extern const int STATE_MODIFIED; //Deprecated TODO remove
+
+extern const int CACHELINE_STATE_INVALID;
+extern const int CACHELINE_STATE_SHARED;
+extern const int CACHELINE_STATE_MODIFIED;
 
 extern const int BUS_REQUEST_NOTHING;
 extern const int BUS_REQUEST_READ;
@@ -32,7 +35,7 @@ struct CacheLine {
 	uint64_t tag;
 	uint8_t state;
 	uint8_t lru;
-};
+}; //TODO check if packing increases performance
 
 struct statechange {
 	int new_state;
@@ -53,6 +56,7 @@ struct CacheState {
 	size_t size; // Size in lines //TODO during setup verify this is a multiple of child caches
 	size_t line_size; // Cache line size in bytes
 	//TODO implement different caches for data and instructions
+	struct CacheLine* lines;
 };
 
 
@@ -62,7 +66,9 @@ struct CacheState {
 // - write_back: true if cache is write back, false if cache is write througn
 // - size: the size of the cache in the amount of lines, the size of the parent should be a multiple of this
 // - line_size: the cache line size in bytes
-struct CacheState* setup_cache(struct CacheState* parent, struct Memory* memory, bool write_back, size_t size, size_t line_size);
+struct CacheState* setup_cachestate(struct CacheState* parent, struct Memory* memory, bool write_back, size_t size, size_t line_size);
+
+void free_cachestate(struct CacheState* state);
 
 void add_child(struct CacheState* parent, struct CacheState* child);
 

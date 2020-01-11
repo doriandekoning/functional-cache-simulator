@@ -20,6 +20,10 @@ const int STATE_INVALID = 0;
 const int STATE_SHARED = 1;
 const int STATE_MODIFIED = 2;
 
+const int CACHELINE_STATE_INVALID = 0;
+const int CACHELINE_STATE_SHARED = 1;
+const int CACHELINE_STATE_MODIFIED = 2;
+
 const int BUS_REQUEST_NOTHING = 0;
 const int BUS_REQUEST_READ = 1;
 const int BUS_REQUEST_READX = 2;
@@ -202,7 +206,7 @@ struct statechange get_msi_state_change_by_bus_request(int current_state, int bu
 
 
 
-struct CacheState* setup_cache(struct CacheState* parent, struct Memory* memory, bool write_back, size_t size, size_t line_size) {
+struct CacheState* setup_cachestate(struct CacheState* parent, struct Memory* memory, bool write_back, size_t size, size_t line_size) {
 	//TODO make it so memory can be a parent
 
 	if(parent != NULL && memory != NULL) {
@@ -236,7 +240,10 @@ struct CacheState* setup_cache(struct CacheState* parent, struct Memory* memory,
 	new_state->size = size;
 	new_state->line_size = line_size;
 	new_state->cur_size_children_array = 0;
-
+	new_state->lines = malloc(sizeof(struct CacheLine) * size);
+	for(int i = 0; i < size; i++) {
+		new_state->lines[i].state = CACHELINE_STATE_INVALID;
+	}
 	return new_state;
 
 }
@@ -256,4 +263,10 @@ void add_child(struct CacheState* parent, struct CacheState* child) {
 	parent->children[parent->amount_children] = child;
 	parent->amount_children++;
 	child->parent_cache = parent;
+}
+
+void free_cachestate(struct CacheState* state) {
+	free(state->lines);
+	free(state->children);
+	free(state);
 }

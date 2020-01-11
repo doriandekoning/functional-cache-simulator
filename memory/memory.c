@@ -33,8 +33,8 @@ struct Memory* init_last_level_memory() {
         total_subtables++;
         mem->table = calloc(4096, 8);
         if(mem->table == NULL){
-		printf("Could not calloc new simulated memory!\n");
-		exit(1);
+			printf("Could not calloc new simulated memory!\n");
+			exit(1);
         }
         return mem;
 }
