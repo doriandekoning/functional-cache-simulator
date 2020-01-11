@@ -206,16 +206,9 @@ struct statechange get_msi_state_change_by_bus_request(int current_state, int bu
 
 
 
-struct CacheState* setup_cachestate(struct CacheState* parent, struct Memory* memory, bool write_back, size_t size, size_t line_size) {
-	//TODO make it so memory can be a parent
-
-	if(parent != NULL && memory != NULL) {
-		printf("Error during cache setup: both parent and memory cannot both be set\n");
-		return NULL;
-	}
+struct CacheState* setup_cachestate(struct CacheState* parent, bool write_back, size_t size, size_t line_size, uint associativity) {
 
 	struct CacheState* new_state = malloc(sizeof(struct CacheState));
-
 	if(parent != NULL) {
 		if(parent->size % size != 0){
 			printf("Error during cache setup: Parent size %d is not a multiple of size: %d\n", parent->size, size);
@@ -226,12 +219,6 @@ struct CacheState* setup_cachestate(struct CacheState* parent, struct Memory* me
 			return NULL;
 		}
 		add_child(parent, new_state);
-
-	}else if(memory != NULL){
-		new_state->memory = memory;
-	}else{
-		printf("Error during cache setup: both parent and memory cannot be null\n");
-		return NULL;
 	}
 
 	new_state->amount_children = 0;
@@ -241,13 +228,17 @@ struct CacheState* setup_cachestate(struct CacheState* parent, struct Memory* me
 	new_state->line_size = line_size;
 	new_state->cur_size_children_array = 0;
 	new_state->lines = malloc(sizeof(struct CacheLine) * size);
+	if(associativity > size || associativity == 0) {
+		printf("Error during cache setup: invalid value for associativity: %d, value should be > 0 and < size\n", associativity);
+		return NULL;
+	}
+	new_state->associativity = associativity;
 	for(int i = 0; i < size; i++) {
 		new_state->lines[i].state = CACHELINE_STATE_INVALID;
 	}
 	return new_state;
 
 }
-
 
 void add_child(struct CacheState* parent, struct CacheState* child) {
 	// Check if array needs to be sized up
@@ -269,4 +260,16 @@ void free_cachestate(struct CacheState* state) {
 	free(state->lines);
 	free(state->children);
 	free(state);
+}
+
+int get(struct CacheState* state, uint64_t address) {
+	int set_idx = CALCULATE_SET_INDEX(state, address);
+	for(int i = set_idx; i < (set_idx + state->associativity); i++) {
+		// if(state->lines[i]->tag )
+	}
+	return 0;
+}
+
+void write(struct CacheState* state, uint64_t address) {
+	// int line_idx = read();
 }
