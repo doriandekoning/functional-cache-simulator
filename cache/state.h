@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "config.h"
 #include "pipereader/pipereader.h"
+#include "coherency_protocol.h"
 
 #define CACHELINE_STATE_INVALID 0
 
@@ -33,11 +34,12 @@ struct statechange {
 
 
 typedef struct CacheLine* CacheState;
-typedef int (*NewStateFunc)(int old_state, int event, int* bus_request);
+
+
 
 struct CacheState {
 	struct CacheState* parent_cache;
-	size_t amount_children;
+	size_t amount_children; //TODO rename lower level
 	size_t cur_size_children_array;
 	struct CacheState** children; // List of children
 	bool write_back;
@@ -48,7 +50,7 @@ struct CacheState {
 	struct CacheLine* lines;
 	struct Bus* bus;
 	int (*eviction_func)(struct CacheState*, uint64_t);
-	NewStateFunc new_state_func;
+	struct CoherencyProtocol* coherency_protocol;
 };
 
 typedef int (*EvictionFunc)(struct CacheState*, uint64_t);
@@ -60,7 +62,7 @@ typedef int (*EvictionFunc)(struct CacheState*, uint64_t);
 // - write_back: true if cache is write back, false if cache is write througn
 // - size: the size of the cache in the amount of lines, the size of the parent should be a multiple of this
 // - line_size: the cache line size in bytes
-struct CacheState* setup_cachestate(struct CacheState* parent, bool write_back, size_t size, size_t line_size, int associativity, EvictionFunc evictionfunc, NewStateFunc new_state_func);
+struct CacheState* setup_cachestate(struct CacheState* parent, bool write_back, size_t size, size_t line_size, int associativity, EvictionFunc evictionfunc, struct CoherencyProtocol* coherency_protocol);
 
 void free_cachestate(struct CacheState* state);
 

@@ -9,10 +9,14 @@
 #include "memory/memory.h"
 
 int tests_run = 0;
+struct CoherencyProtocol msi_coherency_protocol_state_test = {
+    .new_state_func = &new_state_msi,
+    .flush_needed_on_evict = &flush_needed_on_eviction_msi,
+};
 
 
 int test_setup_state_memory() {
-    struct CacheState* created_state = setup_cachestate(NULL, false, 100, 10, 2, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* created_state = setup_cachestate(NULL, false, 100, 10, 2, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     _assertEquals(created_state->size, 100);
     _assertEquals(created_state->line_size, 10);
     _assertEquals(created_state->parent_cache, NULL);
@@ -23,8 +27,8 @@ int test_setup_state_memory() {
 
 int test_setup_state_parent_cache() {
     int parent_size = 128;
-    struct CacheState* parent = setup_cachestate(NULL, false, parent_size, 10, 1, &find_line_to_evict_lru, &new_state_msi);
-    struct CacheState* created_cache = setup_cachestate(parent, false, parent_size/8, 10, 1, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* parent = setup_cachestate(NULL, false, parent_size, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
+    struct CacheState* created_cache = setup_cachestate(parent, false, parent_size/8, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     _assertEquals(created_cache->parent_cache, parent);
     _assertEquals(parent->amount_children, 1);
     _assertEquals(parent->children[0], created_cache);
@@ -33,8 +37,8 @@ int test_setup_state_parent_cache() {
 
 int test_setup_state_parent_size_not_correct() {
     int parent_size = 128;
-    struct CacheState* parent = setup_cachestate(NULL, false, parent_size, 10, 1, &find_line_to_evict_lru, &new_state_msi);
-    struct CacheState* created_cache = setup_cachestate(parent, false, (parent_size/8) + 1, 10, 1, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* parent = setup_cachestate(NULL, false, parent_size, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
+    struct CacheState* created_cache = setup_cachestate(parent, false, (parent_size/8) + 1, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     _assertEquals(created_cache, NULL);
     _assertEquals(parent->amount_children, 0);
     return 0;
@@ -42,12 +46,12 @@ int test_setup_state_parent_size_not_correct() {
 
 int test_setup_state_invalid_associativity() {
     int parent_size = 128;
-    struct CacheState* parent = setup_cachestate(NULL, false, parent_size, 10, 1, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* parent = setup_cachestate(NULL, false, parent_size, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     // Associativity 0
-    struct CacheState* created_cache = setup_cachestate(parent, false, (parent_size/8) + 1, 10, 0, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* created_cache = setup_cachestate(parent, false, (parent_size/8) + 1, 10, 0, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     _assertEquals(created_cache, NULL);
     // Associaitivty > size
-    created_cache = setup_cachestate(parent, false, (parent_size/8) , 10, (parent_size/8) + 10, &find_line_to_evict_lru, &new_state_msi);
+    created_cache = setup_cachestate(parent, false, (parent_size/8) , 10, (parent_size/8) + 10, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     _assertEquals(created_cache, NULL);
 
     return 0;
@@ -55,8 +59,8 @@ int test_setup_state_invalid_associativity() {
 
 int test_setup_state_parent_cache_line_sizes_not_equal(){
     int parent_size = 128;
-    struct CacheState* parent = setup_cachestate(NULL, false, parent_size, 10, 1, &find_line_to_evict_lru, &new_state_msi);
-    struct CacheState* created_cache = setup_cachestate(parent, false, (parent_size/8) , 12, 1, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* parent = setup_cachestate(NULL, false, parent_size, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
+    struct CacheState* created_cache = setup_cachestate(parent, false, (parent_size/8) , 12, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     _assertEquals(created_cache, NULL);
     _assertEquals(parent->amount_children, 0);
     return 0;
@@ -65,9 +69,9 @@ int test_setup_state_parent_cache_line_sizes_not_equal(){
 int test_setup_state_parent_has_64_children() {
     int parent_size = 128;
     int amount_children = 7;
-    struct CacheState* parent = setup_cachestate(NULL, false, parent_size, 10, 1, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* parent = setup_cachestate(NULL, false, parent_size, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     for(int i = 0; i < amount_children; i++) {
-        struct CacheState* created_cache = setup_cachestate(parent, false, (parent_size/8) , 10, 1, &find_line_to_evict_lru, &new_state_msi);
+        struct CacheState* created_cache = setup_cachestate(parent, false, (parent_size/8) , 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
         _assertEquals(created_cache->parent_cache, parent);
     }
     _assertEquals(parent->amount_children, amount_children);
@@ -77,18 +81,18 @@ int test_setup_state_parent_has_64_children() {
 
 int test_setup_state_lines_initialized() {
     int size = 128;
-    struct CacheState* cache = setup_cachestate(NULL, false, size, 10, 1, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* cache = setup_cachestate(NULL, false, size, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     for(int i = 0; i < size; i++){
         _assertEquals(CACHELINE_STATE_INVALID, cache->lines[i].state);
     }
-    free_cachestate(cache); //TODO free everywhere
+    free_cachestate(cache);
     return 0;
 }
 
 
 int test_free_cachestate() {
     int size = 128;
-    struct CacheState* cache = setup_cachestate(NULL, false, size, 10, 1, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* cache = setup_cachestate(NULL, false, size, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     free_cachestate(cache);
     return 0;
 }
@@ -96,7 +100,7 @@ int test_free_cachestate() {
 int test_calc_set_index_directly_mapped_cache() {
     int size = 64;
     int line_size = 8;
-    struct CacheState* cache = setup_cachestate(NULL, false, size, line_size, 1, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* cache = setup_cachestate(NULL, false, size, line_size, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     _assertEquals(0, CALCULATE_SET_INDEX(cache, 0*line_size));
     _assertEquals(1, CALCULATE_SET_INDEX(cache, 1*line_size));
     _assertEquals(0, CALCULATE_SET_INDEX(cache, 64*line_size));
@@ -107,7 +111,7 @@ int test_calc_set_index_directly_mapped_cache() {
 int test_calc_set_index_fully_associative() {
     int size = 64;
     int line_size = 8;
-    struct CacheState* cache = setup_cachestate(NULL, false, size, line_size, 64, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* cache = setup_cachestate(NULL, false, size, line_size, 64, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     _assertEquals(0, CALCULATE_SET_INDEX(cache, 0*line_size));
     _assertEquals(0, CALCULATE_SET_INDEX(cache, 1*line_size));
     _assertEquals(0, CALCULATE_SET_INDEX(cache, 49*line_size));
@@ -121,7 +125,7 @@ int test_calc_set_index_fully_associative() {
 int test_calc_set_index_4way_associative() {
     int size = 64;
     int line_size = 8;
-    struct CacheState* cache = setup_cachestate(NULL, false, size, line_size, 4, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* cache = setup_cachestate(NULL, false, size, line_size, 4, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     _assertEquals(0, CALCULATE_SET_INDEX(cache, 0*line_size));
     _assertEquals(4, CALCULATE_SET_INDEX(cache, 1*line_size));
     _assertEquals(16, CALCULATE_SET_INDEX(cache, 4*line_size));
@@ -135,7 +139,7 @@ int test_calc_set_index_4way_associative() {
 int test_calc_tag_directly_mapped_cache() {
     int size = 64;
     int line_size = 8;
-    struct CacheState* cache = setup_cachestate(NULL, false, size, line_size, 1, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* cache = setup_cachestate(NULL, false, size, line_size, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     _assertEquals(0, CALCULATE_TAG(cache, 0*line_size));
     _assertEquals(0, CALCULATE_TAG(cache, 1*line_size));
     _assertEquals(1, CALCULATE_TAG(cache, 64*line_size));
@@ -147,7 +151,7 @@ int test_calc_tag_directly_mapped_cache() {
 int test_calc_tag_fully_associative() {
     int size = 64;
     int line_size = 8;
-    struct CacheState* cache = setup_cachestate(NULL, false, size, line_size, 64, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* cache = setup_cachestate(NULL, false, size, line_size, 64, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     _assertEquals(0, CALCULATE_TAG(cache, 0*line_size));
     _assertEquals(1, CALCULATE_TAG(cache, 1*line_size));
     _assertEquals(49, CALCULATE_TAG(cache, 49*line_size));
@@ -161,7 +165,7 @@ int test_calc_tag_fully_associative() {
 int test_calc_tag_4way_associative() {
     int size = 64;
     int line_size = 8;
-    struct CacheState* cache = setup_cachestate(NULL, false, size, line_size, 4, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* cache = setup_cachestate(NULL, false, size, line_size, 4, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     _assertEquals(0, CALCULATE_TAG(cache, 0*line_size));
     _assertEquals(0, CALCULATE_TAG(cache, 1*line_size));
     _assertEquals(0, CALCULATE_TAG(cache, 4*line_size));
@@ -174,7 +178,7 @@ int test_calc_tag_4way_associative() {
 
 
 int test_perform_cache_access() {
-    struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 4, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 4, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     access_cache(cache, 4, 10, true);
     int actual_line_loc = get_line_location_in_cache(cache, 4);
     _assert(actual_line_loc >= 16 && actual_line_loc < 20);
@@ -183,13 +187,13 @@ int test_perform_cache_access() {
 
 
 int test_perform_cache_access_not_found() {
-    struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 4, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 4, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     _assert(get_line_location_in_cache(cache, 4) == -1);
     return 0;
 }
 
 int test_perform_cache_access_multiple() {
-    struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 4, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 4, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     for(int i = 0; i < 4; i++) {
         access_cache(cache, i, 10+i, true);
     }
@@ -201,7 +205,7 @@ int test_perform_cache_access_multiple() {
 }
 
 int test_perform_cache_access_evict() {
-    struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 4, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 4, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     for(int i = 0; i < 5; i++) {
         access_cache(cache, i*16, 10+i, true);
     }
@@ -216,7 +220,7 @@ int test_perform_cache_access_evict() {
 }
 
 int test_perform_cache_access_different_lines_no_evict() {
-    struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 4, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 4, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     access_cache(cache, 0, 11, true);
     access_cache(cache, 16, 12, true);
     access_cache(cache, 64, 13, true);
@@ -230,7 +234,7 @@ int test_perform_cache_access_different_lines_no_evict() {
 
 
 int test_perform_cache_access_twice_same() {
-    struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 4, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 4, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
      _assert(get_line_location_in_cache(cache, 0x11) == -1);
     access_cache(cache, 0x11, 0, true);
     _assert(get_line_location_in_cache(cache, 0x11 + 16) == -1);
@@ -243,7 +247,7 @@ int test_perform_cache_access_twice_same() {
 
 
 int test_perform_cache_access_read_write() {
-    struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 4, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 4, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     _assert(get_line_location_in_cache(cache, 0x11) == -1);
     access_cache(cache, 0x11, 0, false);
     _assertEquals(CACHELINE_STATE_SHARED, cache->lines[get_line_location_in_cache(cache, 0x11)].state);
@@ -254,7 +258,7 @@ int test_perform_cache_access_read_write() {
 
 
 int test_perform_cache_access_write_read() {
-    struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 4, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 4, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     _assertEquals(-1, get_line_location_in_cache(cache, 0x11));
     access_cache(cache, 0x11, 0, true);
     _assert(get_line_location_in_cache(cache, 0x11) != -1);
@@ -267,7 +271,7 @@ int test_perform_cache_access_write_read() {
 
 
 int test_perform_cache_access_evict_oldest() {
-    struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 4, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 4, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     // Each cache set contains (CACHE_AMOUNT_LINES/AMOUNT_CACHE_SETS) lines, thus if we fill all those and add one additional one
     // the first should be evicted
     for(int i = 0; i < 5; i++) {
@@ -284,12 +288,11 @@ int test_perform_cache_access_evict_oldest() {
 
 
 int test_perform_cache_access_evict_invalid() {
-    struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 8, &find_line_to_evict_lru, &new_state_msi);
+    struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 8, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     for(int i = 0; i < 6; i++) { // Fill cache set partially
         access_cache(cache, 0x11 + (i*64), i, false);
     }
     for(int i = 0; i < 6; i++) { // Fill cache set partially
-        // _assert(STATE_SHARED == get_line_state(state, 0, 0x11 + (i*CACHE_AMOUNT_LINES), NULL));
         _assertEquals(CACHELINE_STATE_SHARED, cache->lines[get_line_location_in_cache(cache, 0x11 + (i*64))].state);
     }
     //Insert an additional line which should not evict anything
@@ -305,42 +308,9 @@ int test_perform_cache_access_evict_invalid() {
 }
 
 
-//TODO multi cpu tests
-/*
-
-int test_write_on_other_cpu_invalidates() {
-    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES * ASSOCIATIVITY, sizeof(struct CacheLine));
-    //Insert entry into cache
-    uint64_t address = 0x1234abc;
-    perform_cache_access(state, 0, address, false);
-    _assert(CACHELINESTATE_SHARED == get_line_state(state, 0, address, NULL));
-
-    // Write entry on other cpu
-    perform_cache_access(state, 1, address, true);
-    _assert(STATE_INVALID == get_line_state(state, 0, address, NULL));
-    _assert(STATE_MODIFIED == get_line_state(state, 1, address, NULL));
-    return 0;
-}
 
 
-
-
-int test_read_on_other_cpu_keeps_shared() {
-    CacheState state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES * ASSOCIATIVITY, sizeof(struct CacheLine));
-    //Insert entry into cache
-    uint64_t address = 0x1234abc;
-    perform_cache_access(state, 0, address, false);
-    _assert(CACHELINE_STATE_SHARED == get_line_state(state, 0, address, NULL));
-
-    // Write entry on other cpu
-    perform_cache_access(state, 1, address, false);
-    _assert(CACHELINE_STATE_SHARED == get_line_state(state, 0, address, NULL));
-    _assert(CACHELINE_STATE_SHARED == get_line_state(state, 1, address, NULL));
-    return 0;
-}
-*/
-
-int main(int argc, char **argv) {
+int test_state() {
     int failed_tests = 0;
     _test(test_setup_state_memory, "test_setup_state_memory");
     _test(test_setup_state_parent_cache, "test_setup_state_parent_cache");
@@ -371,9 +341,9 @@ int main(int argc, char **argv) {
     // _test(test_read_on_other_cpu_keeps_shared, "test_read_on_other_cpu_keeps_shared");
     // _test(test_setup_state_parent_has_64_children, "test_setup_state_parent_has_64_children");
     if(failed_tests == 0 ){
-        printf("All tests passed!\n");
+        printf("All tests passed in state_test!\n");
     } else {
-        printf("One of the tests failed\n");
+        printf("One of the tests failed in state_test\n");
     }
     return 0;
 

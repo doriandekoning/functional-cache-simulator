@@ -59,7 +59,7 @@ int read_sim_memory_internal(struct Memory* mem, uint64_t address, size_t size, 
 		return 0;
 	}
 	if((address & 0xFFF) + size > (1<<12)){
-			debug_printf("Reading cross border!\n");
+			debug_printf("Reading cross border!\n", 0);
 			size_t left_size = (1 << 12 ) - (address & 0xFFF);
 			size_t right_size = size - left_size;
 	debug_printf("Splitting read, left:%x, right:%x\n", left_size, right_size);

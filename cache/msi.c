@@ -40,30 +40,6 @@ int new_state_msi(int old_state, int event, int* bus_request){
     return CACHE_EVENT_NONE;
 }
 
-
-
-
-// struct statechange get_msi_state_change_by_bus_request(int current_state, int bus_request){
-// 	struct statechange ret;
-// 	ret.bus_request = BUS_REQUEST_NOTHING;
-// 	if(current_state == STATE_INVALID) {
-// 		ret.new_state = STATE_INVALID;
-// 	} else if(current_state == STATE_SHARED) {
-// 		if(bus_request == BUS_REQUEST_READ) {
-// 			ret.new_state = STATE_SHARED;
-// 		} else {
-// 			ret.new_state = STATE_INVALID;
-// 		}
-// 	} else if(current_state == STATE_MODIFIED) {
-// 		ret.bus_request = BUS_REQUEST_FLUSH;
-// 		if(bus_request == BUS_REQUEST_READ) {
-// 			ret.new_state = STATE_SHARED;
-// 		} else {
-// 			ret.new_state = STATE_INVALID;
-// 		}
-// 	} else{
-// 		printf("State transition unknown!\n");
-// 		exit(7);
-// 	}
-// 	return ret;
-// }
+bool flush_needed_on_eviction_msi(int cur_state) {
+	return cur_state == CACHELINE_STATE_MODIFIED;
+}
