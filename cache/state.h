@@ -38,13 +38,13 @@ typedef struct CacheLine* CacheState;
 
 
 struct CacheState {
-	struct CacheState* parent_cache;
-	size_t amount_children; //TODO rename lower level
-	size_t cur_size_children_array;
-	struct CacheState** children; // List of children
+	struct CacheState* higher_level_cache;
+	size_t amount_lower_level_caches; //TODO rename lower level
+	size_t cur_size_lower_level_caches_array;
+	struct CacheState** lower_level_caches; // List of lower_level_caches
 	bool write_back;
 	int associativity;
-	size_t size; // Size in lines //TODO during setup verify this is a multiple of child caches
+	size_t size; // Size in lines //TODO during setup verify this is a multiple of lower level caches
 	size_t line_size; // Cache line size in bytes
 	//TODO implement different caches for data and instructions
 	struct CacheLine* lines;
@@ -58,15 +58,15 @@ typedef int (*EvictionFunc)(struct CacheState*, uint64_t);
 
 
 // Sets up a new cache state with the following parameters
-// - parent: is the higher level cache of the new cache, the new cache will be added to the list of children in the parent (if NULL is provided the cache is LLC)
+// - higer level cache: is the higher level cache of the new cache, the new cache will be added to the list of lower level caches in the higher level cache (if NULL is provided the cache is LLC)
 // - write_back: true if cache is write back, false if cache is write througn
-// - size: the size of the cache in the amount of lines, the size of the parent should be a multiple of this
+// - size: the size of the cache in the amount of lines, the size of the higher_level_cache should be a multiple of this
 // - line_size: the cache line size in bytes
-struct CacheState* setup_cachestate(struct CacheState* parent, bool write_back, size_t size, size_t line_size, int associativity, EvictionFunc evictionfunc, struct CoherencyProtocol* coherency_protocol);
+struct CacheState* setup_cachestate(struct CacheState* higher_level_cache, bool write_back, size_t size, size_t line_size, int associativity, EvictionFunc evictionfunc, struct CoherencyProtocol* coherency_protocol);
 
 void free_cachestate(struct CacheState* state);
 
-void add_child(struct CacheState* parent, struct CacheState* child);
+void add_lower_level_cache(struct CacheState* higher_level_cache, struct CacheState* lower_level_cache);
 
 void access_cache(struct CacheState* state, uint64_t address, uint64_t timestamp, bool write);
 

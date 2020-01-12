@@ -19,63 +19,63 @@ int test_setup_state_memory() {
     struct CacheState* created_state = setup_cachestate(NULL, false, 100, 10, 2, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     _assertEquals(created_state->size, 100);
     _assertEquals(created_state->line_size, 10);
-    _assertEquals(created_state->parent_cache, NULL);
-    _assertEquals(created_state->amount_children, 0);
+    _assertEquals(created_state->higher_level_cache, NULL);
+    _assertEquals(created_state->amount_lower_level_caches, 0);
     _assertEquals(created_state->associativity, 2);
     return 0;
 }
 
-int test_setup_state_parent_cache() {
-    int parent_size = 128;
-    struct CacheState* parent = setup_cachestate(NULL, false, parent_size, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
-    struct CacheState* created_cache = setup_cachestate(parent, false, parent_size/8, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
-    _assertEquals(created_cache->parent_cache, parent);
-    _assertEquals(parent->amount_children, 1);
-    _assertEquals(parent->children[0], created_cache);
+int test_setup_state_higher_level_cache() {
+    int higher_level_cache_size = 128;
+    struct CacheState* higher_level_cache = setup_cachestate(NULL, false, higher_level_cache_size, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
+    struct CacheState* created_cache = setup_cachestate(higher_level_cache, false, higher_level_cache_size/8, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
+    _assertEquals(created_cache->higher_level_cache, higher_level_cache);
+    _assertEquals(higher_level_cache->amount_lower_level_caches, 1);
+    _assertEquals(higher_level_cache->lower_level_caches[0], created_cache);
     return 0;
 }
 
-int test_setup_state_parent_size_not_correct() {
-    int parent_size = 128;
-    struct CacheState* parent = setup_cachestate(NULL, false, parent_size, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
-    struct CacheState* created_cache = setup_cachestate(parent, false, (parent_size/8) + 1, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
+int test_setup_state_higher_level_cache_size_not_correct() {
+    int higher_level_cache_size = 128;
+    struct CacheState* higher_level_cache = setup_cachestate(NULL, false, higher_level_cache_size, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
+    struct CacheState* created_cache = setup_cachestate(higher_level_cache, false, (higher_level_cache_size/8) + 1, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     _assertEquals(created_cache, NULL);
-    _assertEquals(parent->amount_children, 0);
+    _assertEquals(higher_level_cache->amount_lower_level_caches, 0);
     return 0;
 }
 
 int test_setup_state_invalid_associativity() {
-    int parent_size = 128;
-    struct CacheState* parent = setup_cachestate(NULL, false, parent_size, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
+    int higher_level_cache_size = 128;
+    struct CacheState* higher_level_cache = setup_cachestate(NULL, false, higher_level_cache_size, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     // Associativity 0
-    struct CacheState* created_cache = setup_cachestate(parent, false, (parent_size/8) + 1, 10, 0, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
+    struct CacheState* created_cache = setup_cachestate(higher_level_cache, false, (higher_level_cache_size/8) + 1, 10, 0, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     _assertEquals(created_cache, NULL);
     // Associaitivty > size
-    created_cache = setup_cachestate(parent, false, (parent_size/8) , 10, (parent_size/8) + 10, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
+    created_cache = setup_cachestate(higher_level_cache, false, (higher_level_cache_size/8) , 10, (higher_level_cache_size/8) + 10, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     _assertEquals(created_cache, NULL);
 
     return 0;
 }
 
-int test_setup_state_parent_cache_line_sizes_not_equal(){
-    int parent_size = 128;
-    struct CacheState* parent = setup_cachestate(NULL, false, parent_size, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
-    struct CacheState* created_cache = setup_cachestate(parent, false, (parent_size/8) , 12, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
+int test_setup_state_higher_level_cache_line_sizes_not_equal(){
+    int higher_level_cache_size = 128;
+    struct CacheState* higher_level_cache = setup_cachestate(NULL, false, higher_level_cache_size, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
+    struct CacheState* created_cache = setup_cachestate(higher_level_cache, false, (higher_level_cache_size/8) , 12, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
     _assertEquals(created_cache, NULL);
-    _assertEquals(parent->amount_children, 0);
+    _assertEquals(higher_level_cache->amount_lower_level_caches, 0);
     return 0;
 }
 
-int test_setup_state_parent_has_64_children() {
-    int parent_size = 128;
-    int amount_children = 7;
-    struct CacheState* parent = setup_cachestate(NULL, false, parent_size, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
-    for(int i = 0; i < amount_children; i++) {
-        struct CacheState* created_cache = setup_cachestate(parent, false, (parent_size/8) , 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
-        _assertEquals(created_cache->parent_cache, parent);
+int test_setup_state_higher_level_cache_has_64_lower_level_caches() {
+    int higher_level_cache_size = 128;
+    int amount_lower_level_caches = 7;
+    struct CacheState* higher_level_cache = setup_cachestate(NULL, false, higher_level_cache_size, 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
+    for(int i = 0; i < amount_lower_level_caches; i++) {
+        struct CacheState* created_cache = setup_cachestate(higher_level_cache, false, (higher_level_cache_size/8) , 10, 1, &find_line_to_evict_lru, &msi_coherency_protocol_state_test);
+        _assertEquals(created_cache->higher_level_cache, higher_level_cache);
     }
-    _assertEquals(parent->amount_children, amount_children);
-    _assertEquals(parent->cur_size_children_array, (amount_children + (8 -(amount_children%8))));
+    _assertEquals(higher_level_cache->amount_lower_level_caches, amount_lower_level_caches);
+    _assertEquals(higher_level_cache->cur_size_lower_level_caches_array, (amount_lower_level_caches + (8 -(amount_lower_level_caches%8))));
     return 0;
 }
 
@@ -313,10 +313,10 @@ int test_perform_cache_access_evict_invalid() {
 int test_state() {
     int failed_tests = 0;
     _test(test_setup_state_memory, "test_setup_state_memory");
-    _test(test_setup_state_parent_cache, "test_setup_state_parent_cache");
-    _test(test_setup_state_parent_size_not_correct, "test_setup_state_parent_size_not_correct");
-    _test(test_setup_state_parent_cache_line_sizes_not_equal, "test_setup_state_parent_cache_line_sizes_not_equal");
-    _test(test_setup_state_parent_has_64_children, "test_setup_state_parent_has_64_children");
+    _test(test_setup_state_higher_level_cache, "test_setup_state_higher_level_cache");
+    _test(test_setup_state_higher_level_cache_size_not_correct, "test_setup_state_higher_level_cache_size_not_correct");
+    _test(test_setup_state_higher_level_cache_line_sizes_not_equal, "test_setup_state_higher_level_cache_line_sizes_not_equal");
+    _test(test_setup_state_higher_level_cache_has_64_lower_level_caches, "test_setup_state_higher_level_cache_has_64_lower_level_caches");
     _test(test_setup_state_lines_initialized, "test_setup_state_lines_initialized");
     _test(test_free_cachestate, "test_free_cachestate");
     _test(test_setup_state_invalid_associativity, "test_setup_state_invalid_associativity");
@@ -339,7 +339,7 @@ int test_state() {
     _test(test_perform_cache_access_evict_invalid, "test_perform_cache_access_evict_invalid");
     // _test(test_write_on_other_cpu_invalidates, "test_write_on_other_cpu_invalidates");
     // _test(test_read_on_other_cpu_keeps_shared, "test_read_on_other_cpu_keeps_shared");
-    // _test(test_setup_state_parent_has_64_children, "test_setup_state_parent_has_64_children");
+    // _test(test_setup_state_higher_level_cache_has_64_lower_level_caches, "test_setup_state_higher_level_cache_has_64_lower_level_caches");
     if(failed_tests == 0 ){
         printf("All tests passed in state_test!\n");
     } else {

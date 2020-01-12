@@ -72,9 +72,8 @@ int add_level(struct CacheHierarchy* hierarchy, struct CacheLevel* level) {
         }
 
         for(int i = 0; i < last_level->amount_caches; i++) {
-            // If new level only has a single cache all caches in the last_level have this cache as parent
-            int parent_index = (level->amount_caches == 1 ? 0 : i);
-            add_child(level->caches[parent_index], last_level->caches[i]);
+            // If new level only has a single cache all caches in the last_level have this cache as higher level cache
+            add_lower_level_cache(level->caches[level->amount_caches == 1 ? 0 : i], last_level->caches[i]);
         }
     }
     hierarchy->levels[hierarchy->amount_levels] = level;

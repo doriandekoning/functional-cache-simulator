@@ -89,7 +89,7 @@ int test_read_on_other_cpu_stays_shared() {
     return 0;
 }
 
-int test_parent_should_invalidate_child_on_evict() {
+int test_higher_level_should_invalidate_lower_level_cache_on_evict() {
     struct CacheHierarchy* hierarchy = setup_two_level_multi_cache_hierarchy();
 
     //Insert entry into cache
@@ -174,7 +174,7 @@ int test_hierarchy(int argc, char **argv) {
     _test(test_init_cache_level, "test_init_cache_level");
     _test(test_write_on_other_cpu_invalidates, "test_write_on_other_cpu_invalidates");
     _test(test_read_on_other_cpu_stays_shared, "test_read_on_other_cpu_stays_shared");
-    _test(test_parent_should_invalidate_child_on_evict,"test_parent_should_invalidate_child_on_evict");
+    _test(test_higher_level_should_invalidate_lower_level_cache_on_evict,"test_higher_level_should_invalidate_lower_level_cache_on_evict");
     _test(test_multilevel, "test_multilevel");
     _test(test_multilevel_with_llc, "test_multilevel_with_llc");
 

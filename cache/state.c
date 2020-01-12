@@ -6,27 +6,27 @@
 #include "state.h"
 #include "bus.h"
 
-struct CacheState* setup_cachestate(struct CacheState* parent, bool write_back, size_t size, size_t line_size, int associativity, EvictionFunc evictionfunc, struct CoherencyProtocol* coherency_protocol){
+struct CacheState* setup_cachestate(struct CacheState* higher_level_cache, bool write_back, size_t size, size_t line_size, int associativity, EvictionFunc evictionfunc, struct CoherencyProtocol* coherency_protocol){
 
 	struct CacheState* new_state = malloc(sizeof(struct CacheState));
-	if(parent != NULL) {
-		if(parent->size % size != 0){
-			printf("Error during cache setup: Parent size %d is not a multiple of size: %d\n", parent->size, size);
+	if(higher_level_cache != NULL) {
+		if(higher_level_cache->size % size != 0){
+			printf("Error during cache setup: higher_level_cache size %d is not a multiple of size: %d\n", higher_level_cache->size, size);
 			return NULL;
 		}
-		if(parent->line_size != line_size) {
-			printf("Error during cache setup: Parent line size should be equal (%d) but is not (%d)\n", parent->line_size, line_size);
+		if(higher_level_cache->line_size != line_size) {
+			printf("Error during cache setup: higher_level_cache line size should be equal (%d) but is not (%d)\n", higher_level_cache->line_size, line_size);
 			return NULL;
 		}
-		add_child(parent, new_state);
+		add_lower_level_cache(higher_level_cache, new_state);
 	}
 
-	new_state->amount_children = 0;
-	new_state->children = NULL;
+	new_state->amount_lower_level_caches = 0;
+	new_state->lower_level_caches = NULL;
 	new_state->write_back = write_back;
 	new_state->size = size;
 	new_state->line_size = line_size;
-	new_state->cur_size_children_array = 0;
+	new_state->cur_size_lower_level_caches_array = 0;
 	new_state->lines = malloc(sizeof(struct CacheLine) * size);
 	new_state->eviction_func = evictionfunc;
 	new_state->coherency_protocol = coherency_protocol;
@@ -43,29 +43,29 @@ struct CacheState* setup_cachestate(struct CacheState* parent, bool write_back, 
 	return new_state;
 }
 
-void add_child(struct CacheState* parent, struct CacheState* child) {
+void add_lower_level_cache(struct CacheState* higher_level_cache, struct CacheState* lower_level_cache) {
 	// Check if array needs to be sized up
 
-	if(parent->amount_children == parent->cur_size_children_array){
+	if(higher_level_cache->amount_lower_level_caches == higher_level_cache->cur_size_lower_level_caches_array){
 
-		struct CacheState** old_children = parent->children;
-		parent->children = malloc(sizeof(struct CacheState*)* (parent->cur_size_children_array+8));
-		for(int i = 0; i < parent->cur_size_children_array; i++) {
-			parent->children[i] = old_children[i];
+		struct CacheState** old_lower_level_caches = higher_level_cache->lower_level_caches;
+		higher_level_cache->lower_level_caches = malloc(sizeof(struct CacheState*)* (higher_level_cache->cur_size_lower_level_caches_array+8));
+		for(int i = 0; i < higher_level_cache->cur_size_lower_level_caches_array; i++) {
+			higher_level_cache->lower_level_caches[i] = old_lower_level_caches[i];
 		}
-		parent->cur_size_children_array += 8;
-		free(old_children);
+		higher_level_cache->cur_size_lower_level_caches_array += 8;
+		free(old_lower_level_caches);
 	}
 
-	parent->children[parent->amount_children] = child;
+	higher_level_cache->lower_level_caches[higher_level_cache->amount_lower_level_caches] = lower_level_cache;
 
-	parent->amount_children++;
-	child->parent_cache = parent;
+	higher_level_cache->amount_lower_level_caches++;
+	lower_level_cache->higher_level_cache = higher_level_cache;
 }
 
 void free_cachestate(struct CacheState* state) {
 	free(state->lines);
-	free(state->children);
+	free(state->lower_level_caches);
 	free(state);
 }
 
@@ -83,11 +83,11 @@ int get_line_location_in_cache(struct CacheState* state, uint64_t address) {
 	return -1;
 }
 
-void inform_children_eviction(struct CacheState* state, int line_idx, uint64_t address) {
-	for(int i = 0; i < state->amount_children; i++) {
-		int child_line_idx = get_line_location_in_cache(state->children[i], address);
-		if(child_line_idx >= 0){
-			state->children[i]->lines[child_line_idx].state = CACHELINE_STATE_INVALID;
+void inform_lower_level_caches_eviction(struct CacheState* state, int line_idx, uint64_t address) {
+	for(int i = 0; i < state->amount_lower_level_caches; i++) {
+		int lower_level_cache_line_idx = get_line_location_in_cache(state->lower_level_caches[i], address);
+		if(lower_level_cache_line_idx >= 0){
+			state->lower_level_caches[i]->lines[lower_level_cache_line_idx].state = CACHELINE_STATE_INVALID;
 		}
 	}
 }
@@ -101,16 +101,16 @@ void access_cache(struct CacheState* state, uint64_t address, uint64_t timestamp
 		// Cache hit, update lru
 		old_state = state->lines[line_idx].state;
 	}else{
-		if(state->parent_cache != NULL) {
-			// Cache miss, search parent cache
-			access_cache(state->parent_cache, address, timestamp, write);
+		if(state->higher_level_cache != NULL) {
+			// Cache miss, search higher_level_cache cache
+			access_cache(state->higher_level_cache, address, timestamp, write);
 		}else{
-			// Cache miss but there is no parent cache, register miss
+			// Cache miss but there is no higher_level_cache cache, register miss
 			register_cache_miss(true, address);
 		}
 		// Fill cache, update the new entry (and evict the oldest one)
 		line_idx = state->eviction_func(state, address);
-		inform_children_eviction(state, line_idx, address);
+		inform_lower_level_caches_eviction(state, line_idx, address);
 		if(state->coherency_protocol->flush_needed_on_evict(state->lines[line_idx].state)){
 			//TODO flush
 		}
