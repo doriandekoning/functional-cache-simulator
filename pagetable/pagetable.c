@@ -11,7 +11,7 @@
 #define INDEX_MASK		0x1ffUL
 
 
-uint32_t vaddr_to_phys32(struct memory* mem, uint32_t cr3_value, uint32_t virtaddress, bool debug) {
+uint32_t vaddr_to_phys32(struct Memory* mem, uint32_t cr3_value, uint32_t virtaddress, bool debug) {
 	uint64_t l1_index = (virtaddress >> 22) & 0x3ff;
 	uint64_t l2_index = (virtaddress >> 12) & 0x3ff;
 
@@ -34,7 +34,7 @@ uint32_t vaddr_to_phys32(struct memory* mem, uint32_t cr3_value, uint32_t virtad
 
 }
 
-uint64_t vaddr_to_phys(struct memory* mem, uint64_t l1_phys, uint64_t virtaddress, bool debug) {
+uint64_t vaddr_to_phys(struct Memory* mem, uint64_t l1_phys, uint64_t virtaddress, bool debug) {
 	if(debug){
 		printf("Cr3 in vaddrtophys:%lx\n", l1_phys);
 	}
@@ -107,7 +107,7 @@ uint64_t vaddr_to_phys(struct memory* mem, uint64_t l1_phys, uint64_t virtaddres
 	return  (phys & 0x3fffffffff000ULL) | (virtaddress & 0xFFF);
 }
 
-int print_pagetable(struct memory* mem, uint64_t cr3) {
+int print_pagetable(struct Memory* mem, uint64_t cr3) {
 	uint64_t l1buf[512];
 	uint64_t l2buf[512];
 	uint64_t l3buf[512];
@@ -156,7 +156,7 @@ int print_pagetable(struct memory* mem, uint64_t cr3) {
 	}
 }
 
-int read_pagetable(struct memory* mem, char* path) {
+int read_pagetable(struct Memory* mem, char* path) {
 	FILE* f = fopen(path, "r");
 	uint64_t cr3;
 	uint64_t totalLevelsRead = 0;

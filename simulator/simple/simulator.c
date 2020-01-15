@@ -13,6 +13,10 @@
 #include "config.h"
 #include "pipereader/pipereader.h"
 #include "cache/state.h"
+#include "cache/hierarchy.h"
+#include "cache/lru.h"
+#include "cache/msi.h"
+#include "cache/coherency_protocol.h"
 #include "mappingreader/mappingreader.h"
 #include "control_registers/control_registers.h"
 
@@ -28,12 +32,58 @@
 #define PE_MASK (1 << 0)
 
 
+FILE* out;
+
+struct __attribute__((__packed__)) OutputStruct{
+	bool write;
+	int64_t timestamp;
+	uint64_t address;
+};
+
+void cache_miss_func(bool write, uint64_t timestamp, uint64_t address) {
+	struct OutputStruct outstruct = {
+		.write = write,
+		.timestamp = timestamp,
+		.address = address,
+	};
+	fwrite(&outstruct, 1, sizeof(struct OutputStruct), out);
+}
+
+struct CacheHierarchy* setup_cache() {
+	struct CacheHierarchy* hierarchy = init_cache_hierarchy(AMOUNT_SIMULATED_PROCESSORS);
+	struct CacheLevel* l1 = init_cache_level(AMOUNT_SIMULATED_PROCESSORS, true);
+	for(int i = 0; i < AMOUNT_SIMULATED_PROCESSORS; i++) {
+		struct CacheState* dcache = setup_cachestate(NULL, true, 8*1024, 1024, 12, &find_line_to_evict_lru, &msi_coherency_protocol, &cache_miss_func);
+		struct CacheState* icache = setup_cachestate(NULL, true, 8*1024, 1024, 12, &find_line_to_evict_lru, &msi_coherency_protocol, &cache_miss_func);
+		add_caches_to_level(l1, dcache, icache);
+	}
+	if(add_level(hierarchy, l1) != 0 ){
+		exit(1);
+	}
+	struct CacheLevel* l2 = init_cache_level(AMOUNT_SIMULATED_PROCESSORS, false);
+	for(int i = 0; i < AMOUNT_SIMULATED_PROCESSORS; i++) {
+		struct CacheState* state = setup_cachestate(NULL, true, 256*1024, 1024, 12, &find_line_to_evict_lru, &msi_coherency_protocol, &cache_miss_func);
+		add_caches_to_level(l2, state, NULL);
+	}
+	if(add_level(hierarchy, l2) != 0 ){
+		exit(1);
+	}
+	struct CacheLevel* l3 = init_cache_level(AMOUNT_SIMULATED_PROCESSORS, false);
+	struct CacheState* state = setup_cachestate(NULL, true, 8*1024*1024, 1024, 12, &find_line_to_evict_lru, &msi_coherency_protocol, &cache_miss_func);
+	add_caches_to_level(l3, state, NULL);
+	if(add_level(hierarchy, l3) != 0 ){
+		exit(1);
+	}
+	return hierarchy;
+}
+
+
 int main(int argc, char **argv) {
 	struct EventIDMapping trace_mapping;
 	FILE* in;
 	unsigned char buf[4048];
-	if(argc < 3) {
-		printf("Atleast two arguments must be provided, first the mapping path, second the trace file\n");
+	if(argc < 4) {
+		printf("Atleast two arguments must be provided, first the mapping path, second the trace file, third output file\n");
 		return 1;
 	}
 
@@ -50,7 +100,12 @@ int main(int argc, char **argv) {
 	debug_printf("Using: \"%s\" as input\n",  argv[2]);
 	in = fopen(argv[2], "r");
 	if(in == NULL) {
-		printf("Could not open file!\n");
+		printf("Could not open input file!\n");
+		return 1;
+	}
+	out = fopen(argv[3], "w");
+	if(out == NULL) {
+		printf("Could not open output file!\n");
 		return 1;
 	}
 
@@ -58,11 +113,7 @@ int main(int argc, char **argv) {
 		printf("Unable to read header\n");
 		return 1;
 	}
-	CacheState cache_state = calloc(AMOUNT_SIMULATED_PROCESSORS * CACHE_AMOUNT_LINES * ASSOCIATIVITY, sizeof(struct CacheLine));
-	if(cache_state == NULL) {
-		printf("Unable to allocate cache state!\n");
-		return 1;
-	}
+	struct CacheHierarchy* cache = setup_cache();
 	uint64_t cr_update_count = 0;
 	uint64_t amount_reads = 0;
 	uint64_t amount_writes = 0;
@@ -78,7 +129,7 @@ int main(int argc, char **argv) {
 	uint64_t delta_t = 0;
 	uint64_t current_timestamp = 0;
 	#ifdef SIMULATE_MEMORY
-	struct memory* simulated_memory = init_memory();
+	struct Memory* simulated_memory = init_memory();
 	#endif
 	uint8_t next_event_id;
 	bool negative_delta_t, hit;
@@ -133,14 +184,13 @@ int main(int argc, char **argv) {
 			}
 			#endif
 
-			bool write = (tmp_access->type == CACHE_WRITE);
-			hit = perform_cache_access(cache_state, 0, physical_address, write); //TODO enable
-			if(!hit) {
-				amount_miss++;
-			}
+			#ifdef SIMULATE_CACHE
+			access_cache_in_hierarchy(cache, tmp_access->cpu, physical_address, current_timestamp, tmp_access->type);
+			#endif
+
 			#ifdef SIMULATE_MEMORY
 			if(tmp_access->address >= 0x2f07ff8 && tmp_access->address < (0x2f07ff8) ) {
-				printf("Access write:%d to %lx(%lx), data:%lx, size: %d, current CR3: %lx at loc:%d\n", tmp_access->type == CACHE_WRITE, tmp_access->address, physical_address, tmp_access->data, tmp_access->size, tmp_access->cr3_val, tmp_access->location);
+				printf("Access write:%d to %lx(%lx), data:%lx, size: %d, current CR3: %lx at loc:%d\n", tmp_access->type == CACHE_EVENT_WRITE, tmp_access->address, physical_address, tmp_access->data, tmp_access->size, tmp_access->cr3_val, tmp_access->location);
 			}
 			//Assume write through (all write  access are directly written to memory)
 			if(write  && !tmp_access->user_access) {//TODO check if still needed

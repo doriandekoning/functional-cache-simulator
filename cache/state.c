@@ -6,7 +6,7 @@
 #include "state.h"
 #include "bus.h"
 
-struct CacheState* setup_cachestate(struct CacheState* higher_level_cache, bool write_back, size_t size, size_t line_size, int associativity, EvictionFunc evictionfunc, struct CoherencyProtocol* coherency_protocol){
+struct CacheState* setup_cachestate(struct CacheState* higher_level_cache, bool write_back, size_t size, size_t line_size, int associativity, EvictionFunc evictionfunc, struct CoherencyProtocol* coherency_protocol, CacheMissFunc cache_miss_func){
 
 	struct CacheState* new_state = malloc(sizeof(struct CacheState));
 	if(higher_level_cache != NULL) {
@@ -29,6 +29,7 @@ struct CacheState* setup_cachestate(struct CacheState* higher_level_cache, bool 
 	new_state->cur_size_lower_level_caches_array = 0;
 	new_state->lines = malloc(sizeof(struct CacheLine) * size);
 	new_state->eviction_func = evictionfunc;
+	new_state->cache_miss_func = cache_miss_func;
 	new_state->coherency_protocol = coherency_protocol;
 	if(associativity > size || associativity == 0) {
 		printf("Error during cache setup: invalid value for associativity: %d, value should be > 0 and < size\n", associativity);
@@ -70,7 +71,7 @@ void free_cachestate(struct CacheState* state) {
 }
 
 void register_cache_miss(bool write, uint64_t address) {
-	printf("Cache miss to address:%016lx\n", address);
+	// printf("Cache miss to address:%016lx\n", address);
 }
 
 int get_line_location_in_cache(struct CacheState* state, uint64_t address) {
@@ -106,13 +107,13 @@ void access_cache(struct CacheState* state, uint64_t address, uint64_t timestamp
 			access_cache(state->higher_level_cache, address, timestamp, write);
 		}else{
 			// Cache miss but there is no higher_level_cache cache, register miss
-			register_cache_miss(true, address);
+			state->cache_miss_func(write, timestamp, address);
 		}
 		// Fill cache, update the new entry (and evict the oldest one)
 		line_idx = state->eviction_func(state, address);
 		inform_lower_level_caches_eviction(state, line_idx, address);
 		if(state->coherency_protocol->flush_needed_on_evict(state->lines[line_idx].state)){
-			//TODO flush
+			state->cache_miss_func(write, timestamp, address);
 		}
 		state->lines[line_idx].tag = CALCULATE_TAG(state, address);
 	}

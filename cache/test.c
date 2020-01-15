@@ -1,3 +1,4 @@
+#ifdef TEST
 #include "state_test.h"
 #include "hierarchy_test.h"
 
@@ -17,3 +18,4 @@ int main() {
     test_hierarchy();
     #endif
 }
+#endif

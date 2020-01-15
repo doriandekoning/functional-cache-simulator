@@ -14,6 +14,8 @@
 #define CACHE_EVENT_BUS_UPGRADE 5 // Write hit in cache, send out to invalidate other caches
 #define CACHE_EVENT_BUS_FLUSH 6// Indicates cahce line is being written back
 
+extern struct CoherencyProtocol msi_coherency_protocol;
+
 int new_state_msi(int old_state, int event, int* bus_request);
 bool flush_needed_on_eviction_msi(int cur_state);
 

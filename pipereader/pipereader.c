@@ -51,7 +51,7 @@ uint64_t get_memory_access(FILE* pipe, cache_access* access, bool write) {
   access->cpu = UINT_FROM_BUF(uint8_t, 0);
   access->address = UINT_FROM_BUF(uint64_t, 1);
   // access->physaddress = UINT_FROM_BUF(uint64_t, 9);
-	access->type = (UINT_FROM_BUF(uint8_t, 9) & INFO_STORE_MASK) ? CACHE_WRITE : CACHE_READ;
+	access->type = (UINT_FROM_BUF(uint8_t, 9) & INFO_STORE_MASK) ? CACHE_EVENT_WRITE : CACHE_EVENT_READ;
 	access->size = (1 << (UINT_FROM_BUF(uint8_t, 9) & INFO_SIZE_SHIFT_MASK));
   uint8_t info =  UINT_FROM_BUF(uint8_t, 9);
   // uint8_t size_shift =  UINT_FROM_BUF(uint8_t, 9) & INFO_SIZE_SHIFT_MASK;

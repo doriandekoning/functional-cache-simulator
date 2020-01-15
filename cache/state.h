@@ -11,7 +11,9 @@
 #define CACHE_EVENT_NONE 0
 #define CACHE_EVENT_READ 1
 #define CACHE_EVENT_WRITE 2
-
+#define CACHE_EVENT_INSTRUCTION_FETCH 3
+#define CACHE_EVENT_MIN CACHE_EVENT_NONE
+#define CACHE_EVENT_MAX CACHE_EVENT_INSTRUCTION_FETCH
 
 /*#define CACHE_WRITE (uint8_t)1
 #define CACHE_READ  (uint8_t)2
@@ -35,7 +37,7 @@ struct statechange {
 
 typedef struct CacheLine* CacheState;
 
-
+typedef void (*CacheMissFunc)(bool write, uint64_t timestamp, uint64_t address);
 
 struct CacheState {
 	struct CacheState* higher_level_cache;
@@ -50,6 +52,7 @@ struct CacheState {
 	struct CacheLine* lines;
 	struct Bus* bus;
 	int (*eviction_func)(struct CacheState*, uint64_t);
+	CacheMissFunc cache_miss_func;
 	struct CoherencyProtocol* coherency_protocol;
 };
 
@@ -58,11 +61,11 @@ typedef int (*EvictionFunc)(struct CacheState*, uint64_t);
 
 
 // Sets up a new cache state with the following parameters
-// - higer level cache: is the higher level cache of the new cache, the new cache will be added to the list of lower level caches in the higher level cache (if NULL is provided the cache is LLC)
+// - higer level cache: is the higher level cache of the new cache, the new cache will be added to the list of lower level caches in the higher level cache (if NULL is provided the cache is LLC) TODO remove this paramenter
 // - write_back: true if cache is write back, false if cache is write througn
 // - size: the size of the cache in the amount of lines, the size of the higher_level_cache should be a multiple of this
 // - line_size: the cache line size in bytes
-struct CacheState* setup_cachestate(struct CacheState* higher_level_cache, bool write_back, size_t size, size_t line_size, int associativity, EvictionFunc evictionfunc, struct CoherencyProtocol* coherency_protocol);
+struct CacheState* setup_cachestate(struct CacheState* higher_level_cache, bool write_back, size_t size, size_t line_size, int associativity, EvictionFunc evictionfunc, struct CoherencyProtocol* coherency_protocol, CacheMissFunc cache_miss_func);
 
 void free_cachestate(struct CacheState* state);
 

@@ -1,6 +1,12 @@
 #include "msi.h"
 #include "state.h"
 
+
+struct CoherencyProtocol msi_coherency_protocol = {
+    .new_state_func = &new_state_msi,
+    .flush_needed_on_evict = &flush_needed_on_eviction_msi,
+};
+
 int new_state_msi(int old_state, int event, int* bus_request){
 	*bus_request = -1;
 	if(event == CACHE_EVENT_WRITE) {
