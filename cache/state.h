@@ -2,8 +2,10 @@
 #define STATE_H
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
+
 #include "config.h"
-#include "pipereader/pipereader.h"
+#include "traceevents.h"
 #include "coherency_protocol.h"
 
 #define CACHELINE_STATE_INVALID 0

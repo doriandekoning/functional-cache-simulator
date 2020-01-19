@@ -1,5 +1,8 @@
+#include <stdio.h>
+
 #include "msi.h"
 #include "state.h"
+
 
 
 struct CoherencyProtocol msi_coherency_protocol = {

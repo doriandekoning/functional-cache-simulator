@@ -1,4 +1,6 @@
 #include <stdlib.h>
+#include <stdio.h>
+
 
 #include "hierarchy.h"
 #include "bus.h"

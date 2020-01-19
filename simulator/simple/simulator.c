@@ -13,7 +13,7 @@
 
 //TODO move each type of reader: printtrace, simplecachesim, simulator to a separate directory
 #include "config.h"
-#include "pipereader/pipereader.h"
+#include "filereader/filereader.h"
 #include "cache/state.h"
 #include "cache/hierarchy.h"
 #include "cache/lru.h"
