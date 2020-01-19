@@ -4,11 +4,8 @@
 
 
 
-#define CACHE_LINE_SIZE *((void*)0) // deprecated use CACHE_LINE_SIZE_BITS
-#define OFFSET_BITS 3
-#define CACHE_AMOUNT_LINES 8388608 // The size of the simulated cache (in 64byte lines) #PREVIOUSLY CACHE_SIZE
+#define CACHE_LINE_SIZE 8
 #define ASSOCIATIVITY 8
-#define AMOUNT_CACHE_SETS (CACHE_AMOUNT_LINES / ASSOCIATIVITY)
 
 
 #define AMOUNT_SIMULATED_PROCESSORS 4

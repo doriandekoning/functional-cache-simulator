@@ -42,6 +42,13 @@ typedef struct access_s {
         uint64_t cr3_val;
 } cache_access;
 
+typedef struct tb_start_exec {
+    uint64_t pc;
+    uint8_t cpu;
+    uint16_t size;
+} tb_start_exec;
+
+
 typedef struct cr_change_t {
     uint64_t tick;
     uint64_t cpu;
@@ -53,6 +60,7 @@ int read_header(FILE* pipe);
 uint64_t get_memory_access(FILE* pipe, cache_access* access, bool write);
 uint64_t get_cr_change(FILE* pipe, cr_change* change);
 uint64_t get_invlpg(FILE* pipe, uint64_t* addr, uint8_t* cpu);
+uint64_t get_tb_start_exec(FILE* pipe, tb_start_exec* tb_start_exec);
 int get_next_event_id(FILE* pipe, uint64_t* delta_t, bool* negative_delta_t, uint8_t* event_id) ;
 
 #endif //PIPEREADER_H

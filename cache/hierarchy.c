@@ -102,7 +102,6 @@ void access_cache_in_hierarchy(struct CacheHierarchy* hierarchy, uint64_t cpu, u
         printf("Unknown cache event type: %d\n", type);
         return;
     }
-    printf("CPU:%d,\taddr:%016lx,\ttype:%d\n", cpu, address, type);
     int cpu_idx = (hierarchy->levels[0]->amount_caches == 1) ? 0 : cpu;
     if(type == CACHE_EVENT_INSTRUCTION_FETCH) {
         access_cache(hierarchy->levels[0]->instruction_caches[cpu_idx], address, timestamp, CACHE_EVENT_READ);

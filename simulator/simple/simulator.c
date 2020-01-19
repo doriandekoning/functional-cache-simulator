@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <string.h>
+#include <dirent.h>
 
 #ifdef SIMULATE_ADDRESS_TRANSLATION
 #ifndef SIMULATE_MEMORY
@@ -49,12 +51,39 @@ void cache_miss_func(bool write, uint64_t timestamp, uint64_t address) {
 	fwrite(&outstruct, 1, sizeof(struct OutputStruct), out);
 }
 
+int perform_cache_access(uint8_t cpu, uint64_t* address, struct CacheHierarchy* hierarchy, struct Memory* memory, ControlRegisterValues control_register_values, uint64_t timestamp, int type) {
+	#ifdef SIMULATE_ADDRESS_TRANSLATION
+	if(paging_enabled(control_register_values, cpu)) {
+		uint64_t physical_address = 0;
+		uint64_t cr3 = get_cr_value(control_register_values, cpu, 3);
+		if( get_cr_value(control_register_values, cpu, 4) & (1U << 5)) { //TODO make constant
+			physical_address = vaddr_to_phys(memory, cr3 & ~0xFFFUL, *address, false);
+
+		}else{
+			printf("32 bit lookup!\n");
+			physical_address = vaddr_to_phys32(memory, cr3 & ~0xFFFUL, *address, true); //TODO should we sign extend?
+		}
+		if(physical_address == NOTFOUND_ADDRESS) {//} || physical_address != tmp_access->physaddress)  {
+			printf("Not able to translate virt:%lx\n", *address);
+			return 1;
+		}
+		debug_printf("Virtual address: %lx translated to physical address: %lx\n", tmp_access->address, physical_address);
+		*address = physical_address;
+	}
+	#endif
+
+	#ifdef SIMULATE_CACHE
+	access_cache_in_hierarchy(hierarchy, cpu, *address, timestamp, type);
+	#endif
+	return 0;
+}
+
 struct CacheHierarchy* setup_cache() {
 	struct CacheHierarchy* hierarchy = init_cache_hierarchy(AMOUNT_SIMULATED_PROCESSORS);
 	struct CacheLevel* l1 = init_cache_level(AMOUNT_SIMULATED_PROCESSORS, true);
 	for(int i = 0; i < AMOUNT_SIMULATED_PROCESSORS; i++) {
-		struct CacheState* dcache = setup_cachestate(NULL, true, 8*1024, 1024, 12, &find_line_to_evict_lru, &msi_coherency_protocol, &cache_miss_func);
-		struct CacheState* icache = setup_cachestate(NULL, true, 8*1024, 1024, 12, &find_line_to_evict_lru, &msi_coherency_protocol, &cache_miss_func);
+		struct CacheState* dcache = setup_cachestate(NULL, true, 8*1024, CACHE_LINE_SIZE, ASSOCIATIVITY, &find_line_to_evict_lru, &msi_coherency_protocol, &cache_miss_func);
+		struct CacheState* icache = setup_cachestate(NULL, true, 8*1024, CACHE_LINE_SIZE, ASSOCIATIVITY, &find_line_to_evict_lru, &msi_coherency_protocol, &cache_miss_func);
 		add_caches_to_level(l1, dcache, icache);
 	}
 	if(add_level(hierarchy, l1) != 0 ){
@@ -62,14 +91,14 @@ struct CacheHierarchy* setup_cache() {
 	}
 	struct CacheLevel* l2 = init_cache_level(AMOUNT_SIMULATED_PROCESSORS, false);
 	for(int i = 0; i < AMOUNT_SIMULATED_PROCESSORS; i++) {
-		struct CacheState* state = setup_cachestate(NULL, true, 256*1024, 1024, 12, &find_line_to_evict_lru, &msi_coherency_protocol, &cache_miss_func);
+		struct CacheState* state = setup_cachestate(NULL, true, 256*1024, CACHE_LINE_SIZE, ASSOCIATIVITY, &find_line_to_evict_lru, &msi_coherency_protocol, &cache_miss_func);
 		add_caches_to_level(l2, state, NULL);
 	}
 	if(add_level(hierarchy, l2) != 0 ){
 		exit(1);
 	}
 	struct CacheLevel* l3 = init_cache_level(AMOUNT_SIMULATED_PROCESSORS, false);
-	struct CacheState* state = setup_cachestate(NULL, true, 8*1024*1024, 1024, 12, &find_line_to_evict_lru, &msi_coherency_protocol, &cache_miss_func);
+	struct CacheState* state = setup_cachestate(NULL, true, 8*1024*1024, CACHE_LINE_SIZE, ASSOCIATIVITY, &find_line_to_evict_lru, &msi_coherency_protocol, &cache_miss_func);
 	add_caches_to_level(l3, state, NULL);
 	if(add_level(hierarchy, l3) != 0 ){
 		exit(1);
@@ -77,18 +106,42 @@ struct CacheHierarchy* setup_cache() {
 	return hierarchy;
 }
 
+int read_pagetables(char* path, struct Memory* mem) {
+	DIR* d = opendir(path);
+	struct dirent *dir;
+	printf("Reading pagetables in directory:%s\n", path);
+	if(d) {
+		while((dir = readdir(d)) != NULL) {
+			if(!strcmp(dir->d_name, ".") || !strcmp(dir->d_name, "..")){
+				continue;
+			}
+			char fPath[512];
+			strcpy(fPath, path);
+			strcat(fPath, "/");
+			strcat(fPath, dir->d_name);
+			if(read_pagetable(mem, fPath)){
+				printf("Could not read pagetable:%s\n", &fPath);
+				return 1;
+			}
+		}
+		closedir(d);
+	}
+	printf("Succesfully read pagetables!\n");
+	return 0;
+}
+
 
 int main(int argc, char **argv) {
 	struct EventIDMapping trace_mapping;
-	FILE* in;
+	FILE *in, *cr3_file;
 	unsigned char buf[4048];
-	if(argc < 4) {
-		printf("Atleast two arguments must be provided, first the mapping path, second the trace file, third output file\n");
+	if(argc < 5) {
+		printf("Atleast two arguments must be provided, first the mapping path, second the trace file, third output file, fourth cr3 output file\n");
 		return 1;
 	}
-
-	if(read_mapping(argv[1], &trace_mapping)){
-		printf("Could not read trace mapping!\n");
+	int err = read_mapping(argv[1], &trace_mapping);
+	if(err){
+		printf("Could not read trace mapping: %d\n", err);
 		return 1;
 	}
 	print_mapping(&trace_mapping);
@@ -105,7 +158,12 @@ int main(int argc, char **argv) {
 	}
 	out = fopen(argv[3], "w");
 	if(out == NULL) {
-		printf("Could not open output file!\n");
+		printf("Could not open output file: %s!\n", argv[3]);
+		return 1;
+	}
+	cr3_file = fopen(argv[4], "w");
+	if(out == NULL) {
+		printf("Could not open cr3 values output file!\n");
 		return 1;
 	}
 
@@ -126,6 +184,7 @@ int main(int argc, char **argv) {
 	ControlRegisterValues control_register_values = init_control_register_values(4); //TODO configure
 	cache_access* tmp_access = malloc(sizeof(cache_access));
 	cr_change* tmp_cr_change = malloc(sizeof(cr_change));
+	tb_start_exec* tmp_tb_start_exec = malloc(sizeof(tb_start_exec));
 	uint64_t delta_t = 0;
 	uint64_t current_timestamp = 0;
 	#ifdef SIMULATE_MEMORY
@@ -134,11 +193,12 @@ int main(int argc, char **argv) {
 	uint8_t next_event_id;
 	bool negative_delta_t, hit;
 	bool paging_is_enabled;
-	uint64_t physical_address;
 	bool failed = false;
 	int after_failed = 0;
+	uint64_t amount_events = 0;
+	bool first_access_encountered = false;
 	while(true) {
-
+		printf("Still running!\n");
 		if(get_next_event_id(in, &delta_t, &negative_delta_t, &next_event_id) == -1) {
 			printf("Unable to read ID of next event!\n");
 			break;
@@ -148,7 +208,14 @@ int main(int argc, char **argv) {
 		}else{
 			current_timestamp -= delta_t;
 		}
+		amount_events++;
 		if(next_event_id == trace_mapping.guest_mem_load_before_exec || next_event_id == trace_mapping.guest_mem_store_before_exec ) {
+			printf("HEIR!\n");
+			if(first_access_encountered == false) {
+				read_pagetables(argv[5], simulated_memory);
+			}
+			first_access_encountered = true;
+
 			if(get_memory_access(in, tmp_access, next_event_id == trace_mapping.guest_mem_store_before_exec)) {
 				printf("Can not read cache access\n");
 				break;
@@ -161,40 +228,16 @@ int main(int argc, char **argv) {
 			}
 			amount_accesses++;
 
-			physical_address = 0;
-
-			#ifdef SIMULATE_ADDRESS_TRANSLATION
-			if(paging_enabled(control_register_values, tmp_access->cpu)) {
-				uint64_t cr3 = get_cr_value(control_register_values, tmp_access->cpu, 3);
-				if( get_cr_value(control_register_values, tmp_access->cpu, 4) & (1U << 5)) { //TODO make constant
-					physical_address = vaddr_to_phys(simulated_memory, cr3 & ~0xFFFUL, tmp_access->address, false);
-
-				}else{
-					printf("32 bit lookup!\n");
-					physical_address = vaddr_to_phys32(simulated_memory, cr3 & ~0xFFFUL, tmp_access->address, true); //TODO should we sign extend?
-				}
-				if(physical_address == NOTFOUND_ADDRESS) {//} || physical_address != tmp_access->physaddress)  {
-					printf("Not able to translate virt:%lx\n", tmp_access->address);
-					break;
-				}
-				debug_printf("Virtual address: %lx translated to physical address: %lx\n", tmp_access->address, physical_address);
-			}else{
-				physical_access++;
-				physical_address = tmp_access->address;
+			if(perform_cache_access(tmp_access->cpu, &tmp_access->address, cache, simulated_memory, control_register_values, current_timestamp, tmp_access->type)){
+				printf("By normal mem access!\n");
+				break;
 			}
-			#endif
-
-			#ifdef SIMULATE_CACHE
-			access_cache_in_hierarchy(cache, tmp_access->cpu, physical_address, current_timestamp, tmp_access->type);
-			#endif
 
 			#ifdef SIMULATE_MEMORY
-			if(tmp_access->address >= 0x2f07ff8 && tmp_access->address < (0x2f07ff8) ) {
-				printf("Access write:%d to %lx(%lx), data:%lx, size: %d, current CR3: %lx at loc:%d\n", tmp_access->type == CACHE_EVENT_WRITE, tmp_access->address, physical_address, tmp_access->data, tmp_access->size, tmp_access->cr3_val, tmp_access->location);
-			}
 			//Assume write through (all write  access are directly written to memory)
-			if(write  && !tmp_access->user_access) {//TODO check if still needed
-				if(write_sim_memory(simulated_memory, physical_address,  tmp_access->size, &(tmp_access->data)) !=  tmp_access->size) {
+			if(tmp_access->type == CACHE_EVENT_WRITE && !tmp_access->user_access) {//TODO check if still needed
+				// if(write_sim_memory(simulated_memory, tmp_access->address, tmp_access->size, &(tmp_access->data)) !=  tmp_access->size) {
+				if(write_sim_memory(simulated_memory, tmp_access->address, tmp_access->size, &(tmp_access->data)) !=  tmp_access->size) {
 			 		printf("Unable to write memory!\n");
 					return 1;
 			 	}
@@ -203,6 +246,7 @@ int main(int argc, char **argv) {
 			#endif /* SIMULATE_MEMORY */
 
 		} else if(next_event_id == trace_mapping.guest_update_cr) {
+
 			cr_update_count++;
 			uint64_t old_cr_val = get_cr_value(control_register_values, tmp_cr_change->cpu, tmp_cr_change->register_number);
 			if(get_cr_change(in, tmp_cr_change)) {
@@ -231,7 +275,12 @@ int main(int argc, char **argv) {
 					debug_printf("But paging is: %d\n", paging_is_enabled);
 				}
 			}
-		} else if(next_event_id = trace_mapping.guest_flush_tlb_invlpg) { //TODO rename trace_mapping to trace_event_mapping
+			if(!first_access_encountered && tmp_cr_change->register_number == 3) {
+				if(fwrite(&(tmp_cr_change->new_value), sizeof(tmp_cr_change->new_value), 1, cr3_file) != 1){
+			     	return 1;
+		     	}
+			}
+		} else if(next_event_id == trace_mapping.guest_flush_tlb_invlpg) { //TODO rename trace_mapping to trace_event_mapping
 			uint64_t addr;
 			uint8_t cpu;
 			if(get_invlpg(in, &addr, &cpu)){
@@ -239,18 +288,35 @@ int main(int argc, char **argv) {
 				break;
 			}
 			amount_tlb_flush++;
+		} else if(next_event_id == trace_mapping.guest_start_exec_tb) {
+			// printf("HIER!\n");
+			if(get_tb_start_exec(in, tmp_tb_start_exec)) {
+				printf("Cannot read tb_start_exec\n");
+				break;
+			}
+			#ifdef SIMULATE_CACHE
+			int i = 0;
+			while(tmp_tb_start_exec->size - (i*CACHE_LINE_SIZE) > -CACHE_LINE_SIZE){
+				amount_accesses++;
+				uint64_t addr = tmp_tb_start_exec->pc  + (i*CACHE_LINE_SIZE);
+				if(perform_cache_access(tmp_tb_start_exec->cpu, &addr, cache, simulated_memory, control_register_values, current_timestamp, CACHE_EVENT_INSTRUCTION_FETCH)){
+					break;
+				}
+				i++;
+			}
+			#endif
 		}else {
 			printf("Unknown eventid: %x\n", next_event_id);
 			break;
 		}
 
-		if(amount_accesses % 10000000 == 0) {
-			printf("%lu million accesses processed!\n", amount_accesses / 1000000);
+		if(amount_events && (amount_events % 10000000 == 0)) {
+			printf("%lu million events processed!\n", amount_events / 1000000);
 		}
-		if(amount_accesses > SIMULATION_LIMIT){
-			printf("Simulation limit reached!\n");
-			break;
-		}
+		// if(amount_accesses > SIMULATION_LIMIT){
+		// 	printf("Simulation limit reached!\n");
+		// 	break;
+		// }
 
 	}
 	printf("Amount of CR updates:\t%lu\n", cr_update_count);

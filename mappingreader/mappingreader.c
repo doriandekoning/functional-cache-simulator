@@ -7,7 +7,7 @@
 int read_mapping(char* input_file_location, struct EventIDMapping* mapping) {
   FILE * mapping_fp;
   char event_name[256];
-
+  printf("Reading trace mapping at: \"%s\"\n", input_file_location);
   mapping_fp = fopen(input_file_location, "r");
   if(mapping_fp == NULL) {
     return 1;
@@ -21,11 +21,11 @@ int read_mapping(char* input_file_location, struct EventIDMapping* mapping) {
     event_id &= (0x3F);
     if(len >= 256) {
       printf("Buffer size too small!\n");
-      return 1;
+      return 2;
     }
     if(fread(&event_name, 1, len, mapping_fp) != len) {
       printf("Unable to read name!\n");
-      return 1;
+      return 3;
     }
     event_name[len] = '\0';
     if(!strcmp(event_name, "guest_mem_load_before_exec")) {
@@ -36,6 +36,8 @@ int read_mapping(char* input_file_location, struct EventIDMapping* mapping) {
       mapping->guest_update_cr = event_id;
     } else if(!strcmp(event_name, "guest_flush_tlb_invlpg")){
       mapping->guest_flush_tlb_invlpg = event_id;
+    } else if(!strcmp(event_name, "guest_start_exec_tb")) {
+      mapping->guest_start_exec_tb = event_id;
     }
   }
   fclose(mapping_fp);
@@ -48,4 +50,5 @@ void print_mapping(struct EventIDMapping* mapping) {
   printf("%d:\tguest_mem_store_before_exec\n", mapping->guest_mem_store_before_exec);
   printf("%d:\tguest_update_cr\n", mapping->guest_update_cr);
   printf("%d:\tguest_flush_tlb_invlpg\n", mapping->guest_flush_tlb_invlpg);
+  printf("%d:\tuest_start_exec_tb\n", mapping->guest_start_exec_tb);
 }

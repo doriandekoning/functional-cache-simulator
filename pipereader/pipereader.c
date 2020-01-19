@@ -8,7 +8,6 @@
 #include "cache/state.h"
 #include "pipereader.h"
 
-
 #define READ_UINT8_FROM_PIPE(variable)  if(fread(&variable, 1, 1, pipe) != 1){printf("Could not read uint8 from pipe!\n");return -1;}
 #define READ_UINT16_FROM_PIPE(variable) if(fread(&variable, 2, 1, pipe) != 1) {printf("Could not read uint16 from pipe!\n");return -1;}
 #define READ_UINT32_FROM_PIPE(variable) if(fread(&variable, 4, 1, pipe) != 1) {printf("Could not read uint32 from pipe!\n");return -1;}
@@ -66,6 +65,14 @@ uint64_t get_memory_access(FILE* pipe, cache_access* access, bool write) {
     // READ_UINT64_FROM_PIPE(access->cr3_val);
 	}
 	return 0;
+}
+
+uint64_t get_tb_start_exec(FILE* pipe, tb_start_exec* tb_start_exec) {
+  READ_BYTES_FROM_PIPE(buf, 1 + 8 + 2);
+  tb_start_exec->cpu = UINT_FROM_BUF(uint8_t, 0);
+  tb_start_exec->pc = UINT_FROM_BUF(uint64_t, 1);
+  tb_start_exec->size = UINT_FROM_BUF(uint16_t, 9);
+  return 0;
 }
 
 uint64_t get_cr_change(FILE* pipe, cr_change* change){
