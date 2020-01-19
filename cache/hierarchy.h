@@ -31,7 +31,7 @@ void free_cache_hierachy(struct CacheHierarchy* hierarchy);
 
 int add_level(struct CacheHierarchy* hierarchy, struct CacheLevel* level);
 int add_caches_to_level(struct CacheLevel* level, struct CacheState* data_cache, struct CacheState* instruction_cache);
-void access_cache_in_hierarchy(struct CacheHierarchy* hierarchy, uint64_t cpu, uint64_t address, uint64_t timestamp, int type);
+int access_cache_in_hierarchy(struct CacheHierarchy* hierarchy, uint64_t cpu, uint64_t address, uint64_t timestamp, int type);
 
 #endif /* _HIERARCHY_H */
 

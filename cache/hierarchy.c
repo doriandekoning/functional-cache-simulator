@@ -95,14 +95,14 @@ int add_level(struct CacheHierarchy* hierarchy, struct CacheLevel* level) {
     return 0;
 }
 
-void access_cache_in_hierarchy(struct CacheHierarchy* hierarchy, uint64_t cpu, uint64_t address, uint64_t timestamp, int type) {
+int access_cache_in_hierarchy(struct CacheHierarchy* hierarchy, uint64_t cpu, uint64_t address, uint64_t timestamp, int type) {
     if(cpu >= hierarchy->amount_cpus) {
         printf("Cpu index higher than amount of cpus!\n");
-        return;
+        return 1;
     }
     if(type < CACHE_EVENT_NONE || type > CACHE_EVENT_MAX) {
         printf("Unknown cache event type: %d\n", type);
-        return;
+        return 1;
     }
     int cpu_idx = (hierarchy->levels[0]->amount_caches == 1) ? 0 : cpu;
     if(type == CACHE_EVENT_INSTRUCTION_FETCH) {
@@ -110,4 +110,5 @@ void access_cache_in_hierarchy(struct CacheHierarchy* hierarchy, uint64_t cpu, u
     }else{
         access_cache(hierarchy->levels[0]->caches[cpu_idx], address, timestamp, type == CACHE_EVENT_WRITE);
     }
+    return 0;
 }

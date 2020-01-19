@@ -46,29 +46,25 @@ int read_header(FILE* file) {
     return 0;
 }
 
-uint64_t get_memory_access(FILE* file, cache_access* access, bool write) {
+uint64_t file_get_memory_access(FILE* file, cache_access* access, bool write) {
   READ_BYTES_FROM_FILE(buf, 1 + 8 + 2); // cpu(1) + address(8) + info_int(2)
   access->cpu = UINT_FROM_BUF(uint8_t, 0);
   access->address = UINT_FROM_BUF(uint64_t, 1);
   // access->physaddress = UINT_FROM_BUF(uint64_t, 9);
-	access->type = (UINT_FROM_BUF(uint8_t, 9) & INFO_STORE_MASK) ? CACHE_EVENT_WRITE : CACHE_EVENT_READ;
-	access->size = (1 << (UINT_FROM_BUF(uint8_t, 9) & INFO_SIZE_SHIFT_MASK));
   uint8_t info =  UINT_FROM_BUF(uint8_t, 9);
+	access->type = (info & INFO_STORE_MASK) ? CACHE_EVENT_WRITE : CACHE_EVENT_READ;
+	access->size = (1 << (info & INFO_SIZE_SHIFT_MASK));
   // uint8_t size_shift =  UINT_FROM_BUF(uint8_t, 9) & INFO_SIZE_SHIFT_MASK;
-  access->big_endian = UINT_FROM_BUF(uint8_t, 9) & INFO_BIG_ENDIAN_MASK;
-  access->user_access = (UINT_FROM_BUF(uint8_t, 10) == MMU_USER_IDX);
+  access->big_endian = info & INFO_BIG_ENDIAN_MASK;
+  access->user_access = (UINT_FROM_BUF(uint8_t, 10) == MMU_USER_IDX); //TODO remove
   // READ_UINT8_FROM_FILE(access->location);
 	if(write) {
 		READ_UINT64_FROM_FILE(access->data);
-    if(access->size != 8 && access->data) {
-      uint32_t c = access->data;
-    }
-    // READ_UINT64_FROM_FILE(access->cr3_val);
 	}
 	return 0;
 }
 
-uint64_t get_tb_start_exec(FILE* file, tb_start_exec* tb_start_exec) {
+uint64_t file_get_tb_start_exec(FILE* file, tb_start_exec* tb_start_exec) {
   READ_BYTES_FROM_FILE(buf, 1 + 8 + 2);
   tb_start_exec->cpu = UINT_FROM_BUF(uint8_t, 0);
   tb_start_exec->pc = UINT_FROM_BUF(uint64_t, 1);
@@ -76,7 +72,7 @@ uint64_t get_tb_start_exec(FILE* file, tb_start_exec* tb_start_exec) {
   return 0;
 }
 
-uint64_t get_cr_change(FILE* file, cr_change* change){
+uint64_t file_get_cr_change(FILE* file, cr_change* change){
   READ_BYTES_FROM_FILE(buf, 1+1+8) // Read cpu(1) + register_number(1) + new_value(8)
 	change->cpu = UINT_FROM_BUF(uint8_t, 0);
 	change->register_number = UINT_FROM_BUF(uint8_t, 1);
@@ -84,14 +80,14 @@ uint64_t get_cr_change(FILE* file, cr_change* change){
 	return 0;
 }
 
-uint64_t get_invlpg(FILE* file, uint64_t* addr, uint8_t* cpu) {
+uint64_t file_get_invlpg(FILE* file, uint64_t* addr, uint8_t* cpu) {
   READ_BYTES_FROM_FILE(buf, 8 +1);
   *addr = UINT_FROM_BUF(uint64_t, 0);
   *cpu = UINT_FROM_BUF(uint8_t, 8);
   return 0;
 }
 
-int get_next_event_id(FILE* file, uint64_t* delta_t, bool* negative_delta_t, uint8_t* event_id) {
+int file_get_next_event_id(FILE* file, uint64_t* delta_t, bool* negative_delta_t, uint8_t* event_id) {
   uint16_t delta_t_lsb;
   READ_UINT16_FROM_FILE(delta_t_lsb);
   if(delta_t_lsb & (1 << 7)) {

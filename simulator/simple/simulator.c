@@ -13,7 +13,11 @@
 
 //TODO move each type of reader: printtrace, simplecachesim, simulator to a separate directory
 #include "config.h"
+#ifdef INPUT_SMEM
+#include "filereader/sharedmemreader.h"
+#elif INPUT_FILE
 #include "filereader/filereader.h"
+#endif
 #include "cache/state.h"
 #include "cache/hierarchy.h"
 #include "cache/lru.h"
@@ -21,13 +25,26 @@
 #include "cache/coherency_protocol.h"
 #include "mappingreader/mappingreader.h"
 #include "control_registers/control_registers.h"
+#include "traceevents.h"
 
-#ifdef SIMULATE_MEMORY
 #include "memory/memory.h"
-#endif
 
 #ifdef SIMULATE_ADDRESS_TRANSLATION
 #include "pagetable/pagetable.h"
+#endif
+
+#ifdef INPUT_SMEM
+#define get_next_event_id smem_get_next_event_id
+#define get_memory_access smem_get_memory_access
+#define get_tb_start_exec smem_get_tb_start_exec
+#define get_invlpg smem_get_invlpg
+#define get_cr_change smem_get_cr_change
+#elif INPUT_FILE
+#define get_next_event_id file_get_next_event_id
+#define get_memory_access file_get_memory_access
+#define get_tb_start_exec file_get_tb_start_exec
+#define get_invlpg file_get_invlpg
+#define get_cr_change file_get_cr_change
 #endif
 
 #define PG_MASK (1 << 31)
@@ -73,9 +90,10 @@ int perform_cache_access(uint8_t cpu, uint64_t* address, struct CacheHierarchy* 
 	#endif
 
 	#ifdef SIMULATE_CACHE
-	access_cache_in_hierarchy(hierarchy, cpu, *address, timestamp, type);
-	#endif
+	return access_cache_in_hierarchy(hierarchy, cpu, *address, timestamp, type);
+	#else
 	return 0;
+	#endif
 }
 
 struct CacheHierarchy* setup_cache() {
@@ -106,6 +124,7 @@ struct CacheHierarchy* setup_cache() {
 	return hierarchy;
 }
 
+#ifdef SIMULATE_ADDRESS_TRANSLATION
 int read_pagetables(char* path, struct Memory* mem) {
 	DIR* d = opendir(path);
 	struct dirent *dir;
@@ -129,11 +148,35 @@ int read_pagetables(char* path, struct Memory* mem) {
 	printf("Succesfully read pagetables!\n");
 	return 0;
 }
+#endif
 
 
 int main(int argc, char **argv) {
 	struct EventIDMapping trace_mapping;
-	FILE *in, *cr3_file;
+	#ifdef SIMULATE_CACHE
+	printf("Simulating cache!\n");
+	#endif
+	#ifdef SIMULATE_MEMORY
+	printf("Simulating memory!\n");
+	#endif
+	#ifdef SIMULATE_ADDRESS_TRANSLATION
+	printf("Simulating address translation!\n");
+	#endif
+
+	#ifdef INPUT_SMEM
+		struct shared_mem* in = setup_shared_mem();
+	#elif INPUT_FILE
+		FILE *in = fopen(argv[2], "r");
+		if(in == NULL) {
+			printf("Could not open input file!\n");
+			return 1;
+		}
+		if(read_header(in) != 0) {
+			printf("Unable to read header\n");
+			return 1;
+		}
+	#endif
+	FILE *cr3_file;
 	unsigned char buf[4048];
 	if(argc < 5) {
 		printf("Atleast two arguments must be provided, first the mapping path, second the trace file, third output file, fourth cr3 output file\n");
@@ -151,11 +194,7 @@ int main(int argc, char **argv) {
 		trace_mapping.guest_mem_store_before_exec, "guest_mem_store_before_exec"
 	);
 	debug_printf("Using: \"%s\" as input\n",  argv[2]);
-	in = fopen(argv[2], "r");
-	if(in == NULL) {
-		printf("Could not open input file!\n");
-		return 1;
-	}
+
 	out = fopen(argv[3], "w");
 	if(out == NULL) {
 		printf("Could not open output file: %s!\n", argv[3]);
@@ -167,10 +206,6 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	if(read_header(in) != 0) {
-		printf("Unable to read header\n");
-		return 1;
-	}
 	struct CacheHierarchy* cache = setup_cache();
 	uint64_t cr_update_count = 0;
 	uint64_t amount_reads = 0;
@@ -187,18 +222,16 @@ int main(int argc, char **argv) {
 	tb_start_exec* tmp_tb_start_exec = malloc(sizeof(tb_start_exec));
 	uint64_t delta_t = 0;
 	uint64_t current_timestamp = 0;
-	#ifdef SIMULATE_MEMORY
 	struct Memory* simulated_memory = init_memory();
-	#endif
 	uint8_t next_event_id;
 	bool negative_delta_t, hit;
 	bool paging_is_enabled;
 	bool failed = false;
+	int amount_unable_to_translate = 0;
 	int after_failed = 0;
 	uint64_t amount_events = 0;
 	bool first_access_encountered = false;
 	while(true) {
-		printf("Still running!\n");
 		if(get_next_event_id(in, &delta_t, &negative_delta_t, &next_event_id) == -1) {
 			printf("Unable to read ID of next event!\n");
 			break;
@@ -210,11 +243,12 @@ int main(int argc, char **argv) {
 		}
 		amount_events++;
 		if(next_event_id == trace_mapping.guest_mem_load_before_exec || next_event_id == trace_mapping.guest_mem_store_before_exec ) {
-			printf("HEIR!\n");
+			#ifdef SIMULATE_ADDRESS_TRANSLATION
 			if(first_access_encountered == false) {
 				read_pagetables(argv[5], simulated_memory);
 			}
 			first_access_encountered = true;
+			#endif
 
 			if(get_memory_access(in, tmp_access, next_event_id == trace_mapping.guest_mem_store_before_exec)) {
 				printf("Can not read cache access\n");
@@ -229,12 +263,15 @@ int main(int argc, char **argv) {
 			amount_accesses++;
 
 			if(perform_cache_access(tmp_access->cpu, &tmp_access->address, cache, simulated_memory, control_register_values, current_timestamp, tmp_access->type)){
-				printf("By normal mem access!\n");
 				break;
 			}
 
 			#ifdef SIMULATE_MEMORY
 			//Assume write through (all write  access are directly written to memory)
+			if(tmp_access->address > 0xffffc90000000000 && tmp_access->address <= 0xffffe8ffffffffff) {
+				printf("Non ram access!\n");
+				continue;
+			}
 			if(tmp_access->type == CACHE_EVENT_WRITE && !tmp_access->user_access) {//TODO check if still needed
 				// if(write_sim_memory(simulated_memory, tmp_access->address, tmp_access->size, &(tmp_access->data)) !=  tmp_access->size) {
 				if(write_sim_memory(simulated_memory, tmp_access->address, tmp_access->size, &(tmp_access->data)) !=  tmp_access->size) {
@@ -313,10 +350,10 @@ int main(int argc, char **argv) {
 		if(amount_events && (amount_events % 10000000 == 0)) {
 			printf("%lu million events processed!\n", amount_events / 1000000);
 		}
-		// if(amount_accesses > SIMULATION_LIMIT){
-		// 	printf("Simulation limit reached!\n");
-		// 	break;
-		// }
+		if(amount_accesses > SIMULATION_LIMIT){
+			printf("Simulation limit reached!\n");
+			break;
+		}
 
 	}
 	printf("Amount of CR updates:\t%lu\n", cr_update_count);
@@ -328,6 +365,7 @@ int main(int argc, char **argv) {
 	printf("Amount physical accesses:\t\t%lu\n", physical_access);
 	printf("Amount of user accesses:\t\t%lu\n", amount_user_accesses);
 	printf("Amount of tlb flush instructions\t%lu\n", amount_tlb_flush);
+	printf("Amount unable to translate\t\t%lu\n", amount_unable_to_translate);
 	free(tmp_access);
 	free(tmp_cr_change);
 }
