@@ -47,17 +47,14 @@ int read_header(FILE* file) {
 }
 
 uint64_t file_get_memory_access(FILE* file, cache_access* access, bool write) {
-  READ_BYTES_FROM_FILE(buf, 1 + 8 + 2); // cpu(1) + address(8) + info_int(2)
+  READ_BYTES_FROM_FILE(buf, 1 + 8 + 1); // cpu(1) + address(8) + info_int(1)
   access->cpu = UINT_FROM_BUF(uint8_t, 0);
   access->address = UINT_FROM_BUF(uint64_t, 1);
   // access->physaddress = UINT_FROM_BUF(uint64_t, 9);
   uint8_t info =  UINT_FROM_BUF(uint8_t, 9);
 	access->type = (info & INFO_STORE_MASK) ? CACHE_EVENT_WRITE : CACHE_EVENT_READ;
 	access->size = (1 << (info & INFO_SIZE_SHIFT_MASK));
-  // uint8_t size_shift =  UINT_FROM_BUF(uint8_t, 9) & INFO_SIZE_SHIFT_MASK;
   access->big_endian = info & INFO_BIG_ENDIAN_MASK;
-  access->user_access = (UINT_FROM_BUF(uint8_t, 10) == MMU_USER_IDX); //TODO remove
-  // READ_UINT8_FROM_FILE(access->location);
 	if(write) {
 		READ_UINT64_FROM_FILE(access->data);
 	}
