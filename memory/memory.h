@@ -3,12 +3,14 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 struct Memory{
 	struct Memory** table;
+	FILE* backing_file;
 };
 
-struct Memory* init_memory();
+struct Memory* init_memory(FILE* backing_file);
 void free_memory();
 
 

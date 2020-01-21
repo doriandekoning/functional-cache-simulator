@@ -158,6 +158,7 @@ int main(int argc, char **argv) {
 	#endif
 	#ifdef SIMULATE_MEMORY
 	printf("Simulating memory!\n");
+	FILE* memory_backing_file = NULL;
 	#endif
 	#ifdef SIMULATE_ADDRESS_TRANSLATION
 	printf("Simulating address translation!\n");
@@ -222,7 +223,7 @@ int main(int argc, char **argv) {
 	tb_start_exec* tmp_tb_start_exec = malloc(sizeof(tb_start_exec));
 	uint64_t delta_t = 0;
 	uint64_t current_timestamp = 0;
-	struct Memory* simulated_memory = init_memory();
+	struct Memory* simulated_memory;
 	uint8_t next_event_id;
 	bool negative_delta_t, hit;
 	bool paging_is_enabled;
@@ -245,7 +246,16 @@ int main(int argc, char **argv) {
 		if(next_event_id == trace_mapping.guest_mem_load_before_exec || next_event_id == trace_mapping.guest_mem_store_before_exec ) {
 			#ifdef SIMULATE_ADDRESS_TRANSLATION
 			if(first_access_encountered == false) {
-				read_pagetables(argv[5], simulated_memory);
+				// read_pagetables(argv[5], simulated_memory);
+				if(argc >= 7 && argv[6] != NULL) {
+					printf("Opening memory backing file:%s\n", argv[6]);
+					memory_backing_file = fopen(argv[6], "w");
+					if(memory_backing_file == NULL) {
+						printf("Could not open memory backing file!\n");
+						return 1;
+					}
+				}
+				simulated_memory = init_memory(memory_backing_file);
 			}
 			first_access_encountered = true;
 			#endif

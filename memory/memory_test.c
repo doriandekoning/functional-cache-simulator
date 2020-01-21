@@ -10,27 +10,29 @@
 
 int testos_run = 0;
 
+FILE* test_backing_file;
+
 
 int test_init() {
-	struct memory* mem = init_memory();
+	struct Memory* mem = init_memory(NULL);
 
 	return 0;
 }
 
 int test_write_last_level() {
-	struct memory* mem = init_memory();
+	struct Memory* mem = init_memory(NULL);
 	uint64_t value = 0x654321;
 	int written = write_sim_memory(mem, 0xAFF, 8, (uint8_t*)&value);
 	_assertEquals(8, written);
-	struct memory* l1 = mem->table[0];
+	struct Memory* l1 = mem->table[0];
 	if(l1 == NULL){ return 1; }
-	struct memory* l2 = l1->table[0];
+	struct Memory* l2 = l1->table[0];
 	if(l2 == NULL){return 1;}
-	struct memory* l3 = l2->table[0];
+	struct Memory* l3 = l2->table[0];
 	if(l3 == NULL) {return 1;}
-	struct memory* l4 = l3->table[0];
+	struct Memory* l4 = l3->table[0];
 	if(l4 == NULL) {return 1;}
-	struct memory* l5 = l4->table[0];
+	struct Memory* l5 = l4->table[0];
 	if(l5 == NULL) {return 1;}
 	uint64_t result;
 	printf("Table is at:%p\n", ((void*)l5->table));
@@ -41,7 +43,7 @@ int test_write_last_level() {
 }
 
 int test_write_not_zero() {
-	struct memory* mem = init_memory();
+	struct Memory* mem = init_memory(NULL);
 	uint64_t value = 888888;
 	uint64_t addr = 0x111CCCABA123;
 	int written = write_sim_memory(mem, addr, 8, (uint8_t*)&value);
@@ -52,15 +54,15 @@ int test_write_not_zero() {
 		return 1;
 	}
 	_assertEquals(value, read_value);
-	struct memory* l1 = mem->table[((addr >> 47) & 0x1)];
+	struct Memory* l1 = mem->table[((addr >> 47) & 0x1)];
 	if(l1 == NULL) { return 1;}
-	struct memory* l2 = l1->table[((addr >> 39) & 0x1FF)];
+	struct Memory* l2 = l1->table[((addr >> 39) & 0x1FF)];
 	if(l2 == NULL) {return 1;}
-	struct memory* l3 = l2->table[((addr >> 30) & 0x1FF)];
+	struct Memory* l3 = l2->table[((addr >> 30) & 0x1FF)];
 	if(l3 == NULL) { return 1;}
-	struct memory* l4 = l3->table[((addr >> 21) & 0x1FF)];
+	struct Memory* l4 = l3->table[((addr >> 21) & 0x1FF)];
 	if(l4 == NULL) { return 1;}
-	struct memory* l5 = l4->table[((addr >> 12) & 0x1FF)];
+	struct Memory* l5 = l4->table[((addr >> 12) & 0x1FF)];
 	if(l5 == NULL) { return 1;}
 	uint64_t result = 0;
 	memcpy(&result, ((uint8_t*)l5->table) + (addr & 0xFFF), 8);
@@ -69,7 +71,7 @@ int test_write_not_zero() {
 }
 
 int test_write_border() {
-        struct memory* mem = init_memory();
+        struct Memory* mem = init_memory(NULL);
         uint64_t value = (uint64_t)-1;
         int written = write_sim_memory(mem, 0xffffffff0fffff-4, 8, (uint8_t*)&value);
         _assertEquals(8, written);
@@ -77,7 +79,7 @@ int test_write_border() {
 }
 
 int test_write_read_somewhere(){
-	struct memory* mem = init_memory();
+	struct Memory* mem = init_memory(NULL);
 	uint64_t value = 123454321;
 	_assertEquals(8, write_sim_memory(mem, 0x32fc2a888, 8, &value));
 	uint64_t value_read;
@@ -87,7 +89,7 @@ int test_write_read_somewhere(){
 }
 
 int test_read_border() {
-        struct memory* mem = init_memory();
+        struct Memory* mem = init_memory(NULL);
 	uint64_t addr = 0xffffffffff5fc0b0;
         uint32_t value = 0x12;
         int written = write_sim_memory(mem, addr, 4, (uint8_t*)&value);
@@ -100,7 +102,7 @@ int test_read_border() {
 }
 
 int test_read() {
-	struct memory* mem = init_memory();
+	struct Memory* mem = init_memory(NULL);
 	uint64_t value = 54321;
 	int written = write_sim_memory(mem, 1234, 8, (uint8_t*)&value);
 	_assertEquals(8, written);
@@ -112,7 +114,7 @@ int test_read() {
 }
 
 int test_overwrite() {
-	struct memory* mem = init_memory();
+	struct Memory* mem = init_memory(NULL);
 	uint64_t value = 54321;
 	int written = write_sim_memory(mem, 1234, 8, (uint8_t*)&value);
 	_assertEquals(8, written);
@@ -129,7 +131,7 @@ int test_overwrite() {
 
 
 int test_read_write_full_page() {
-	struct memory* mem = init_memory();
+	struct Memory* mem = init_memory(NULL);
 	int64_t values[512];
 	for(int i = 0; i < 512; i++) {
 		values[i] = 0xFFF-i;
@@ -145,7 +147,7 @@ int test_read_write_full_page() {
 }
 
 int test_rw_uint64() {
-	struct memory* mem = init_memory();
+	struct Memory* mem = init_memory(NULL);
 	uint32_t val = 0x12300;
 	uint64_t val_extended = (0xFFFFFFFF00000000 | val);
 	uint64_t addr = 0x123345678;
@@ -161,7 +163,7 @@ int test_rw_uint64() {
 }
 
 int test_write_full_read_partial_page() {
-        struct memory* mem = init_memory();
+        struct Memory* mem = init_memory(NULL);
         int64_t values[512];
         for(int i = 0; i < 512; i++) {
                 values[i] = 0xFFF-i;
@@ -178,7 +180,7 @@ int test_write_full_read_partial_page() {
 
 
 int test_error_in_sim() {
-	struct memory* mem = init_memory();
+	struct Memory* mem = init_memory(NULL);
 	uint32_t value = 0xbffbfeac;
 	uint64_t address = 0xbffacfff;
 	_assertEquals(4, write_sim_memory(mem, address, 4, &value));
@@ -190,7 +192,7 @@ int test_error_in_sim() {
 }
 
 int test_big_little_endian() {
-	struct memory* mem = init_memory();
+	struct Memory* mem = init_memory(NULL);
 	uint8_t value[] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
 	uint64_t address = 0xbffac000;
 	_assertEquals(8, write_sim_memory(mem, address, 8, &value));
@@ -202,7 +204,7 @@ int test_big_little_endian() {
 }
 
 int test_read_int32() {
-	struct memory* mem = init_memory();
+	struct Memory* mem = init_memory(NULL);
 	uint64_t value = 0x123456789abcdeff;
 	uint64_t address =  0x2aff8;
 	_assertEquals(4, write_sim_memory(mem, address, 4, &value));
@@ -213,8 +215,55 @@ int test_read_int32() {
 	return 0;
 }
 
+int test_backing_memory() {
+	FILE* test_backing_file = fopen("memory/testbackingfile", "r");
+	if(test_backing_file == NULL) {
+		printf("Unable to open test backing file!\n");
+		return 1;
+	}
+	struct Memory* mem = init_memory(test_backing_file);
+	int cur_addr = 0;
+	size_t size_read;
+	uint8_t read_val;
+	uint8_t val_in_file;
+	while(1) {
+		fseek(mem->backing_file, cur_addr, SEEK_SET);
+		size_read = fread(&val_in_file, 1, 1, test_backing_file);
+		if(size_read != 1) break;
+		_assertEquals(1, read_sim_memory(mem, cur_addr, 1, &read_val));
+		_assertEquals(read_val, val_in_file);
+		cur_addr++;
+	};
+	fclose(test_backing_file);
+	return 0;
+}
+
+int test_backing_memory_write() {
+	FILE* test_backing_file = fopen("memory/testbackingfile", "r");
+	if(test_backing_file == NULL) {
+		printf("Unable to open test backing file!\n");
+		return 1;
+	}
+	struct Memory* mem = init_memory(test_backing_file);
+	uint64_t addr = 0x1234;
+	uint8_t file_val, mem_val;
+	fseek(mem->backing_file, addr, SEEK_SET);
+	_assertEquals(1, fread(&file_val, 1, 1, test_backing_file));
+	_assertEquals(1, read_sim_memory(mem, addr, 1, &mem_val));
+	_assertEquals(file_val, mem_val);
+	uint8_t new_val = ~file_val;
+	_assertEquals(1, write_sim_memory(mem, addr, 1, &new_val));
+	_assertEquals(1, read_sim_memory(mem, addr, 1, &mem_val));
+	_assertEquals((uint8_t)~file_val, mem_val);
+	fclose(test_backing_file);
+	return 0;
+}
+
+
+
 int main(int argc, char **argv) {
 	int failed_tests = 0;
+
 	_test(test_init, "test_init");
 	_test(test_write_last_level, "test_write_last_level");
 	_test(test_write_not_zero, "test_write_not_zero");
@@ -229,6 +278,8 @@ int main(int argc, char **argv) {
 	_test(test_error_in_sim, "test_error_in_sim");
 	_test(test_big_little_endian, "test_big_little_endian");
 	_test(test_read_int32, "test_read_int32");
+	_test(test_backing_memory, "test_backing_memory");
+	_test(test_backing_memory_write, "test_backing_memory_write");
 	if(failed_tests == 0 ){
 		printf("All tests passed!\n");
 	} else {
