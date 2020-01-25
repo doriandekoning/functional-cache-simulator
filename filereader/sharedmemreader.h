@@ -19,12 +19,13 @@
 #define SEM_READ_2_NAME "/qemu_st_sem_read_2"
 #define SHARED_MEM_REGION_1_NAME "/qemu_simple_trace_buffer_1"
 #define SHARED_MEM_REGION_2_NAME "/qemu_simple_trace_buffer_2"
+#define SEM_STARTUP_NAME "/memtracing_start_sem"
 #define SHARED_MEM_BUF_SIZE 1024*1024*8
 
 
 struct shared_mem {
     uint8_t* buf_1, *buf_2;
-    sem_t *write_sem_1, *write_sem_2, *read_sem_1, *read_sem_2;
+    sem_t *write_sem_1, *write_sem_2, *read_sem_1, *read_sem_2, *start_sem;
     size_t current_read_idx;
     uint8_t current_buf_idx;
     size_t buf_size;

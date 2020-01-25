@@ -30,7 +30,6 @@ typedef struct access_s {
         uint8_t type;
         uint64_t data;
         uint8_t size;
-        bool user_access;
         uint8_t location;
         bool big_endian;
         uint64_t cr3_val;

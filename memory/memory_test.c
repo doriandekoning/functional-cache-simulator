@@ -89,11 +89,11 @@ int test_write_read_somewhere(){
 }
 
 int test_read_border() {
-        struct Memory* mem = init_memory(NULL);
-	uint64_t addr = 0xffffffffff5fc0b0;
-        uint32_t value = 0x12;
-        int written = write_sim_memory(mem, addr, 4, (uint8_t*)&value);
-        _assertEquals(4, written);
+	struct Memory* mem = init_memory(NULL);
+	uint64_t addr = 0xfffff5fc0b0;
+	uint32_t value = 0x12;
+	int written = write_sim_memory(mem, addr, 4, (uint8_t*)&value);
+	_assertEquals(4, written);
 	uint32_t read_value;
 	int bytes_read = read_sim_memory(mem, addr, 4, (uint8_t*)&read_value);
 	_assertEquals(bytes_read, 4);

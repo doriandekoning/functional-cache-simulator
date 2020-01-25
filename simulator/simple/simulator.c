@@ -68,14 +68,14 @@ void cache_miss_func(bool write, uint64_t timestamp, uint64_t address) {
 	fwrite(&outstruct, 1, sizeof(struct OutputStruct), out);
 }
 
-int perform_cache_access(uint8_t cpu, uint64_t* address, struct CacheHierarchy* hierarchy, struct Memory* memory, ControlRegisterValues control_register_values, uint64_t timestamp, int type) {
+int perform_cache_access(uint8_t cpu, uint64_t* address, struct CacheHierarchy* hierarchy, struct Memory* memory, ControlRegisterValues control_register_values, uint64_t timestamp, int type, bool* is_kernel_access) {
 	#ifdef SIMULATE_ADDRESS_TRANSLATION
+	// printf("Pagingenabled:%d, %d cpu\n", paging_enabled(control_register_values, cpu), cpu);
 	if(paging_enabled(control_register_values, cpu)) {
 		uint64_t physical_address = 0;
 		uint64_t cr3 = get_cr_value(control_register_values, cpu, 3);
 		if( get_cr_value(control_register_values, cpu, 4) & (1U << 5)) { //TODO make constant
-			physical_address = vaddr_to_phys(memory, cr3 & ~0xFFFUL, *address, false);
-
+			physical_address = vaddr_to_phys(memory, cr3 & ~0xFFFUL, *address, false, is_kernel_access);
 		}else{
 			printf("32 bit lookup!\n");
 			physical_address = vaddr_to_phys32(memory, cr3 & ~0xFFFUL, *address, true); //TODO should we sign extend?
@@ -84,7 +84,7 @@ int perform_cache_access(uint8_t cpu, uint64_t* address, struct CacheHierarchy* 
 			printf("Not able to translate virt:%lx\n", *address);
 			return 1;
 		}
-		debug_printf("Virtual address: %lx translated to physical address: %lx\n", tmp_access->address, physical_address);
+		// printf("Virtual address: %lx translated to physical address: %lx\n", address, physical_address);
 		*address = physical_address;
 	}
 	#endif
@@ -164,10 +164,31 @@ int main(int argc, char **argv) {
 	printf("Simulating address translation!\n");
 	#endif
 
+	if(argc < 6) {
+		printf("Atleast 5 arguments must be provided, first the mapping path, second the trace file, third output file, fourth cr3 output file\n");
+		return 1;
+	}
+	char* trace_id_mapping = argv[1];
+	printf("Trace id mapping file:%s\n", trace_id_mapping);
+	char* input_file = argv[2];
+	printf("Input file: %s\n", input_file);
+	char* output_file = argv[3];
+	printf("Output file: %s\n", output_file);
+	char* memory_backing_file_location = NULL;
+	if(argc >= 4) {
+		memory_backing_file_location = argv[4];
+	}
+	printf("Memdump file: %s\n", memory_backing_file_location);
+	char* initial_cr_values_file = NULL;
+	if(argc >= 5) {
+		initial_cr_values_file = argv[5];
+	}
+	printf("Initial cr values file: %s\n", initial_cr_values_file);
+
 	#ifdef INPUT_SMEM
 		struct shared_mem* in = setup_shared_mem();
 	#elif INPUT_FILE
-		FILE *in = fopen(argv[2], "r");
+		FILE *in = fopen(input_file, "r");
 		if(in == NULL) {
 			printf("Could not open input file!\n");
 			return 1;
@@ -177,13 +198,9 @@ int main(int argc, char **argv) {
 			return 1;
 		}
 	#endif
-	FILE *cr3_file;
 	unsigned char buf[4048];
-	if(argc < 5) {
-		printf("Atleast two arguments must be provided, first the mapping path, second the trace file, third output file, fourth cr3 output file\n");
-		return 1;
-	}
-	int err = read_mapping(argv[1], &trace_mapping);
+
+	int err = read_mapping(trace_id_mapping, &trace_mapping);
 	if(err){
 		printf("Could not read trace mapping: %d\n", err);
 		return 1;
@@ -194,20 +211,17 @@ int main(int argc, char **argv) {
 		trace_mapping.guest_mem_load_before_exec, "guest_mem_load_before_exec",
 		trace_mapping.guest_mem_store_before_exec, "guest_mem_store_before_exec"
 	);
-	debug_printf("Using: \"%s\" as input\n",  argv[2]);
+	debug_printf("Using: \"%s\" as input\n",  input_file);
 
-	out = fopen(argv[3], "w");
+	out = fopen(output_file, "w");
 	if(out == NULL) {
 		printf("Could not open output file: %s!\n", argv[3]);
 		return 1;
 	}
-	cr3_file = fopen(argv[4], "w");
-	if(out == NULL) {
-		printf("Could not open cr3 values output file!\n");
-		return 1;
-	}
 
 	struct CacheHierarchy* cache = setup_cache();
+	uint64_t mem_range_start = 0;
+	uint64_t mem_range_end = 0x3ffdffffUL;
 	uint64_t cr_update_count = 0;
 	uint64_t amount_reads = 0;
 	uint64_t amount_writes = 0;
@@ -231,7 +245,24 @@ int main(int argc, char **argv) {
 	int amount_unable_to_translate = 0;
 	int after_failed = 0;
 	uint64_t amount_events = 0;
-	bool first_access_encountered = false;
+	bool is_user_page_access;
+	printf("Setting up memory!\n");
+	if(memory_backing_file_location != NULL) {
+		printf("Opening memory backing file:%s\n", memory_backing_file_location);
+		memory_backing_file = fopen(memory_backing_file_location, "r");
+		if(memory_backing_file == NULL) {
+			printf("Could not open memory backing file!\n");
+			return 1;
+		}
+	}
+	simulated_memory = init_memory(memory_backing_file);
+	if(initial_cr_values_file != NULL) {
+		if(read_cr_values_from_dump(initial_cr_values_file, control_register_values)) {
+			printf("Unable to read initial cr register values!\n");
+			return 1;
+		}
+		printf("Succesfully read initial cr values!\n");
+	}
 	while(true) {
 		if(get_next_event_id(in, &delta_t, &negative_delta_t, &next_event_id) == -1) {
 			printf("Unable to read ID of next event!\n");
@@ -244,22 +275,6 @@ int main(int argc, char **argv) {
 		}
 		amount_events++;
 		if(next_event_id == trace_mapping.guest_mem_load_before_exec || next_event_id == trace_mapping.guest_mem_store_before_exec ) {
-			#ifdef SIMULATE_ADDRESS_TRANSLATION
-			if(first_access_encountered == false) {
-				// read_pagetables(argv[5], simulated_memory);
-				if(argc >= 7 && argv[6] != NULL) {
-					printf("Opening memory backing file:%s\n", argv[6]);
-					memory_backing_file = fopen(argv[6], "w");
-					if(memory_backing_file == NULL) {
-						printf("Could not open memory backing file!\n");
-						return 1;
-					}
-				}
-				simulated_memory = init_memory(memory_backing_file);
-			}
-			first_access_encountered = true;
-			#endif
-
 			if(get_memory_access(in, tmp_access, next_event_id == trace_mapping.guest_mem_store_before_exec)) {
 				printf("Can not read cache access\n");
 				break;
@@ -271,23 +286,19 @@ int main(int argc, char **argv) {
 				amount_writes++;
 			}
 			amount_accesses++;
-
-			if(perform_cache_access(tmp_access->cpu, &tmp_access->address, cache, simulated_memory, control_register_values, current_timestamp, tmp_access->type)){
+			is_user_page_access = false;
+			if(perform_cache_access(tmp_access->cpu, &tmp_access->address, cache, simulated_memory, control_register_values, current_timestamp, tmp_access->type, &is_user_page_access)){
 				break;
 			}
 
 			#ifdef SIMULATE_MEMORY
-			//Assume write through (all write  access are directly written to memory)
-			if(tmp_access->address > 0xffffc90000000000 && tmp_access->address <= 0xffffe8ffffffffff) {
-				printf("Non ram access!\n");
-				continue;
-			}
-			if(tmp_access->type == CACHE_EVENT_WRITE && !tmp_access->user_access) {//TODO check if still needed
-				// if(write_sim_memory(simulated_memory, tmp_access->address, tmp_access->size, &(tmp_access->data)) !=  tmp_access->size) {
+			//Simulated memory can be seen as write through even if cache isn't (all write  access are directly written to memory)
+			if(tmp_access->type == CACHE_EVENT_WRITE && !is_user_page_access
+				&& mem_range_start <= tmp_access->address && tmp_access->address < mem_range_end ) {
 				if(write_sim_memory(simulated_memory, tmp_access->address, tmp_access->size, &(tmp_access->data)) !=  tmp_access->size) {
-			 		printf("Unable to write memory!\n");
+					printf("Unable to write memory!\n");
 					return 1;
-			 	}
+				}
 			}
 
 			#endif /* SIMULATE_MEMORY */
@@ -322,11 +333,6 @@ int main(int argc, char **argv) {
 					debug_printf("But paging is: %d\n", paging_is_enabled);
 				}
 			}
-			if(!first_access_encountered && tmp_cr_change->register_number == 3) {
-				if(fwrite(&(tmp_cr_change->new_value), sizeof(tmp_cr_change->new_value), 1, cr3_file) != 1){
-			     	return 1;
-		     	}
-			}
 		} else if(next_event_id == trace_mapping.guest_flush_tlb_invlpg) { //TODO rename trace_mapping to trace_event_mapping
 			uint64_t addr;
 			uint8_t cpu;
@@ -336,7 +342,6 @@ int main(int argc, char **argv) {
 			}
 			amount_tlb_flush++;
 		} else if(next_event_id == trace_mapping.guest_start_exec_tb) {
-			// printf("HIER!\n");
 			if(get_tb_start_exec(in, tmp_tb_start_exec)) {
 				printf("Cannot read tb_start_exec\n");
 				break;
@@ -346,7 +351,7 @@ int main(int argc, char **argv) {
 			while(tmp_tb_start_exec->size - (i*CACHE_LINE_SIZE) > -CACHE_LINE_SIZE){
 				amount_accesses++;
 				uint64_t addr = tmp_tb_start_exec->pc  + (i*CACHE_LINE_SIZE);
-				if(perform_cache_access(tmp_tb_start_exec->cpu, &addr, cache, simulated_memory, control_register_values, current_timestamp, CACHE_EVENT_INSTRUCTION_FETCH)){
+				if(perform_cache_access(tmp_tb_start_exec->cpu, &addr, cache, simulated_memory, control_register_values, current_timestamp, CACHE_EVENT_INSTRUCTION_FETCH, &is_user_page_access)){
 					break;
 				}
 				i++;

@@ -22,5 +22,7 @@ void set_cr_value(ControlRegisterValues values, uint8_t cpu, int register_number
 
 bool paging_enabled(ControlRegisterValues values, uint8_t cpu);
 
+int read_cr_values_from_dump(char* cr_values_path, ControlRegisterValues control_register_values);
+
 
 #endif /* __CONTROL_REGISTERS*/

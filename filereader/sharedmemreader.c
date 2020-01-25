@@ -66,6 +66,8 @@ struct shared_mem* setup_shared_mem() {
     if(smem->read_sem_1 == NULL)return NULL;
     smem->read_sem_2 = setup_sem(SEM_READ_2_NAME, 0);
     if(smem->read_sem_2 == NULL)return NULL;
+    smem->start_sem = setup_sem(SEM_STARTUP_NAME, 0);
+    if(smem->start_sem == NULL)return NULL;
     smem->current_read_idx = 0;
     smem->current_buf_idx = 1;
     smem->buf_1 = setup_buf(SHARED_MEM_REGION_1_NAME, SHARED_MEM_BUF_SIZE);
@@ -75,6 +77,7 @@ struct shared_mem* setup_shared_mem() {
     printf("Waiting to aquire first read sem!\n");
     sem_wait(smem->read_sem_1);
     printf("Finished smem setup!\n");
+    sem_wait(smem->start_sem);
     return smem;
 }
 

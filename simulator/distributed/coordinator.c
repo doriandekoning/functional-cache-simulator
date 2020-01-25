@@ -92,60 +92,12 @@ int send_accesses(int worker, MPI_Datatype mpi_access_type) {
 	return 0;
 }
 
-int map_cpu_id(int cpu_id) {
-    for(int i = 0; i < AMOUNT_SIMULATED_PROCESSORS; i++) {
-        if(cpu_id_map[i] == cpu_id){
-            return i;
-        } else if(cpu_id_map[i] == INT_MAX) {
-            cpu_id_map[i] = cpu_id;
-            return i;
-        }
-    }
-    printf("Unable to map cpu:%lx\n", cpu_id);
-    exit(0);
-}
-
 
 void sigintHandler(int sig) {
 	printf("%d recevied\n", sig);
 }
 
-int read_cr_values(char* cr_values_path, ControlRegisterValues control_register_values) { //TODO support multiple cpu
-	debug_printf("Opening CR Values file at:%s\n", cr_values_path);
-	FILE* f = fopen(cr_values_path, "rb");
-	if(f == NULL){
-		printf("Unable to open control register initial values file:%s\n", strerror(errno));
-		return 1;
-	}
-/*	struct stat buf;
-	  stat(cr_values_path, &buf);
-  	char* buffer = calloc(sizeof(char), 4096);
-	debug_print("Reading cr3 values!\n");
-  int buffer_size = fread(buffer,1, buf.st_size, f);
-  debug_printf("Read %d characters from file!\n", buffer_size);
-  if(buffer_size == 0) {
-		perror("Could not read from control registers initial values file!");
-		return 1;
-	}*/
-	uint64_t processor = 0;
-  	int string_offset = 0;
-	uint64_t value;
-	for(int i = 0; i < AMOUNT_SIMULATED_PROCESSORS; i++){
-   		fscanf(f, "%llx\n", &processor);
-		processor = map_cpu_id(processor);
-    	for(int j = 0; j<5; j++) {
 
-      		fscanf(f, "%llx\n", &value);
-			set_cr_value(control_register_values, processor, j, value);
-	    }
-		// debug_printf("Paging is: %s\n", paging_enabled(control_register_values, tmp_access->cpu) ? "enabled" : "disabled");
-		debug_printf("Initial CR values for processor:%lx\n", processor);
-		for(int i = 0; i < 5; i++ ) {
-			debug_printf("Processor[%lx]CR%d=0x%lx\n", processor, i, get_cr_value(control_register_values, processor, i));
-		}
-	}
-	return 0;
-}
 
 int run_coordinator(int world_size, bool read_pgtables, char* input_pagetables, char* cr_values_path) {
 	MPI_Datatype mpi_access_type;

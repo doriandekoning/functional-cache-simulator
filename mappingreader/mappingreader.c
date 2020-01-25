@@ -15,7 +15,7 @@ int read_mapping(char* input_file_location, struct EventIDMapping* mapping) {
   uint8_t event_id;
   uint32_t len;
   while(true) {
-    if(fread(&event_id, 1, 1, mapping_fp) != 1 || fread(&len, 1, 4, mapping_fp) != 4) {
+    if(fread(&event_id, 1, 1, mapping_fp) != 1 || fread(&len, 4, 1, mapping_fp) != 1) {
       return 0;
     }
     event_id &= (0x3F);
@@ -23,8 +23,7 @@ int read_mapping(char* input_file_location, struct EventIDMapping* mapping) {
       printf("Buffer size too small!\n");
       return 2;
     }
-    if(fread(&event_name, 1, len, mapping_fp) != len) {
-      printf("Unable to read name!\n");
+    if(fread(&event_name, len, 1, mapping_fp) != 1) {
       return 3;
     }
     event_name[len] = '\0';
