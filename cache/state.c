@@ -98,7 +98,7 @@ void access_cache(struct CacheState* state, uint64_t address, uint64_t timestamp
 	int lru_idx;
 	int line_idx = get_line_location_in_cache(state, address);
 	int old_state = CACHELINE_STATE_INVALID;
-	if(line_idx > 0) {
+	if(line_idx >= 0) {
 		// Cache hit, update lru
 		old_state = state->lines[line_idx].state;
 	}else{
@@ -124,6 +124,7 @@ void access_cache(struct CacheState* state, uint64_t address, uint64_t timestamp
 	}else{
 		event = CACHE_EVENT_READ;
 	}
+
 	// Inform other caches on bus of eviction
 	int bus_req;
 	int new_state = state->coherency_protocol->new_state_func(old_state, event, &bus_req);
@@ -132,6 +133,7 @@ void access_cache(struct CacheState* state, uint64_t address, uint64_t timestamp
 	if(state->bus != NULL && bus_req>=0) {
 		handle_bus_event(state->bus, bus_req, address, state);
 	}
+
 }
 
 

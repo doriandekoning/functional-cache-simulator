@@ -47,7 +47,7 @@ int test_write_last_level() {
 int test_write_not_zero() {
 	struct Memory* mem = init_memory(NULL);
 	uint64_t value = 888888;
-	uint64_t addr = 0x111CCCABA123;
+	uint64_t addr = 0xABA123;
 	int written = write_sim_memory(mem, addr, 8, (uint8_t*)&value);
 	_assertEquals(8, written);
 	uint64_t read_value;
@@ -75,7 +75,7 @@ int test_write_not_zero() {
 int test_write_border() {
         struct Memory* mem = init_memory(NULL);
         uint64_t value = (uint64_t)-1;
-        int written = write_sim_memory(mem, 0xffffffff0fffff-4, 8, (uint8_t*)&value);
+        int written = write_sim_memory(mem, 0xfffff-4, 8, (uint8_t*)&value);
         _assertEquals(8, written);
         return 0;
 }
@@ -92,7 +92,7 @@ int test_write_read_somewhere(){
 
 int test_read_border() {
 	struct Memory* mem = init_memory(NULL);
-	uint64_t addr = 0xfffff5fc0b0;
+	uint64_t addr = 0x5fc0b0;
 	uint32_t value = 0x12;
 	int written = write_sim_memory(mem, addr, 4, (uint8_t*)&value);
 	_assertEquals(4, written);
@@ -260,7 +260,6 @@ int test_backing_memory_write() {
 	fclose(test_backing_file);
 	return 0;
 }
-
 
 
 

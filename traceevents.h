@@ -24,15 +24,11 @@
 
 typedef struct access_s {
         uint64_t address;
-        uint64_t physaddress;
         uint64_t tick;
         uint8_t cpu;
         uint8_t type;
         uint64_t data;
         uint8_t size;
-        uint8_t location;
-        bool big_endian;
-        uint64_t cr3_val;
 } cache_access;
 
 typedef struct tb_start_exec {

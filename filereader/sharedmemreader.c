@@ -134,7 +134,6 @@ uint64_t smem_get_memory_access(struct shared_mem* smem, cache_access* access, b
     read_from_smem(smem, 1, (uint8_t*)&info);
     access->type = (info & INFO_STORE_MASK) ? CACHE_EVENT_WRITE : CACHE_EVENT_READ;
     access->size = (1 << (info & INFO_SIZE_SHIFT_MASK));
-    access->big_endian = info & INFO_BIG_ENDIAN_MASK;
     if(write) {
         read_from_smem(smem, 8, (uint8_t*)&(access->data));
     }

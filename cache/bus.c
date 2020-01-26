@@ -44,6 +44,7 @@ void handle_bus_event(struct Bus* bus, int event, uint64_t address, struct Cache
         cur_cache = bus->caches[i];
         if(cur_cache == origin_cache) continue;
         int cache_line_idx = get_line_location_in_cache(cur_cache, address);
+
         int old_state = CACHELINE_STATE_INVALID;
         if(cache_line_idx == -1){
             cache_line_idx = cur_cache->eviction_func(cur_cache, address);
@@ -51,11 +52,13 @@ void handle_bus_event(struct Bus* bus, int event, uint64_t address, struct Cache
             old_state = cur_cache->lines[cache_line_idx].state;
         }
 
+
         int new_state = cur_cache->coherency_protocol->new_state_func(old_state, event, &bus_request);
         cur_cache->lines[cache_line_idx].state = new_state;//TODO check if this updates LRU
         if(bus_request != CACHE_EVENT_NONE){
             //TODO handle
             // printf("Unhandled bus request!\n");
         }
+
     }
 }

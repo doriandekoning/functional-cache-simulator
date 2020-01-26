@@ -47,7 +47,6 @@ struct CacheHierarchy* setup_two_level_multi_cache_hierarchy() {
         struct CacheState* cache = setup_cachestate(NULL, false, 64, 1, 2, &find_line_to_evict_lru, &msi_coherency_protocol, &miss_func);
         add_caches_to_level(l2, cache, NULL);
     }
-
     add_level(hierarchy, l2);
     return hierarchy;
 }
@@ -61,13 +60,12 @@ int test_init_cache_level() {
 
 int test_write_on_other_cpu_invalidates() {
     struct CacheHierarchy* hierarchy = setup_single_level_multi_cache_hierarchy();
-
     //Insert entry into cache
     uint64_t address = 0x1234abc;
     access_cache_in_hierarchy(hierarchy, 1, address, 10, CACHE_EVENT_READ);
     _assertEquals(CACHELINE_STATE_SHARED, get_state_of_line(hierarchy, 0, 1, address));
-
     // Write entry on other cpu
+
     access_cache_in_hierarchy(hierarchy, 2, address, 11, CACHE_EVENT_WRITE);
     _assertEquals(CACHELINE_STATE_INVALID, get_state_of_line(hierarchy, 0, 1, address));
     _assertEquals(CACHELINE_STATE_MODIFIED, get_state_of_line(hierarchy, 0, 2, address));
@@ -92,7 +90,6 @@ int test_read_on_other_cpu_stays_shared() {
 
 int test_higher_level_should_invalidate_lower_level_cache_on_evict() {
     struct CacheHierarchy* hierarchy = setup_two_level_multi_cache_hierarchy();
-
     //Insert entry into cache
     uint64_t address = 0x1234abc;
     access_cache_in_hierarchy(hierarchy, 0, address, 10, CACHE_EVENT_READ);
@@ -176,6 +173,7 @@ int test_instruction_cache() {
         return 1;
     }
     add_level(hierarchy, llc);
+
 
     uint64_t address = 0x1234abc;
     for(int i = 0; i < 8; i++) {

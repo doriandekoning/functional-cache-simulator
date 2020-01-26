@@ -58,13 +58,20 @@ int add_caches_to_level(struct CacheLevel* level, struct CacheState* data_cache,
     if(level->amount_caches == 1) {
         level->bus = init_bus();
         add_cache_to_bus(level->bus, level->caches[0]);
+        if(level->has_instruction_caches) {
+            add_cache_to_bus(level->bus, level->instruction_caches[0]);
+        }
     }
     level->caches[level->amount_caches] = data_cache;
-    level->instruction_caches[level->amount_caches] = instruction_cache;
-
+    if(level->has_instruction_caches) {
+        level->instruction_caches[level->amount_caches] = instruction_cache;
+    }
     level->amount_caches++;
-    if(level->amount_caches > 1 ) {
+    if(level->amount_caches > 1) {
         add_cache_to_bus(level->bus, data_cache);
+        if(level->has_instruction_caches) {
+            add_cache_to_bus(level->bus, instruction_cache);
+        }
     }
     return 0;
 }
@@ -88,6 +95,9 @@ int add_level(struct CacheHierarchy* hierarchy, struct CacheLevel* level) {
         for(int i = 0; i < last_level->amount_caches; i++) {
             // If new level only has a single cache all caches in the last_level have this cache as higher level cache
             add_lower_level_cache(level->caches[level->amount_caches == 1 ? 0 : i], last_level->caches[i]);
+            if(level->has_instruction_caches) {
+                add_lower_level_cache(level->instruction_caches[level->amount_caches == 1 ? 0 : i], last_level->instruction_caches[i]);
+            }
         }
     }
     hierarchy->levels[hierarchy->amount_levels] = level;
@@ -106,7 +116,7 @@ int access_cache_in_hierarchy(struct CacheHierarchy* hierarchy, uint64_t cpu, ui
     }
     int cpu_idx = (hierarchy->levels[0]->amount_caches == 1) ? 0 : cpu;
     if(type == CACHE_EVENT_INSTRUCTION_FETCH) {
-        access_cache(hierarchy->levels[0]->instruction_caches[cpu_idx], address, timestamp, CACHE_EVENT_READ);
+        access_cache(hierarchy->levels[0]->instruction_caches[cpu_idx], address, timestamp, false);
     }else{
         access_cache(hierarchy->levels[0]->caches[cpu_idx], address, timestamp, type == CACHE_EVENT_WRITE);
     }
