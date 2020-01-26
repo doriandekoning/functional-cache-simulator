@@ -40,15 +40,20 @@ int main(int argc, char** argv) {
 	cr3_input_path = argv[2];
 	input_path = argv[3];
 
-
 	if(world_rank == (world_size - 2)){
-		run_coordinator(world_size);
+		if(run_coordinator(world_size)) {
+			return 1;
+		}
 	} else if(world_rank == (world_size -1)) {
-		run_input_reader(input_path, mapping_path, cr3_input_path, world_size);
+		if( run_input_reader(input_path, mapping_path, cr3_input_path, world_size)){
+			return 1;
+		}
 	}else {
-		while(true){}
-		// run_worker(world_size-2);
+		if(run_worker(world_size, world_rank)) {
+			return 1;
+		}
 	}
+	printf("Finished, rank:%d\n", world_rank);
 	MPI_Finalize();
 	return 0;
 }

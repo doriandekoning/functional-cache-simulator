@@ -56,6 +56,7 @@ int run_input_reader(char* input_path, char* mapping_path, char* cr3_path, int m
 		return 1;
 	}
 
+	int amount_bufs =0;
 	while(true) {
 		#ifdef INPUT_SMEM
 		buf = get_current_buffer(in);

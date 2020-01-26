@@ -1,3 +1,5 @@
+#ifdef TEST
+
 #include "control_registers.h"
 #include <stdio.h>
 #include <stdint.h>
@@ -42,3 +44,6 @@ int main(int argc, char **argv) {
     _test(test_set_and_get_twice_single_cpu, "test_set_and_get_twice_single_cpu");
     _test(test_set_and_get_multiple_cpu, "test_set_and_get_multiple_cpu");
 }
+
+
+#endif
