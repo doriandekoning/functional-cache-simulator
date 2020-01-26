@@ -10,6 +10,7 @@
 #define PG_PSE_MASK		(1UL << 7)
 #define INDEX_MASK		0x1ffUL
 #define PG_USER_MASK     (1 << 2)
+#define PG_CACHE_DISABLE_MASK ( 1 << 4)
 
 
 uint32_t vaddr_to_phys32(struct Memory* mem, uint32_t cr3_value, uint32_t virtaddress, bool debug) {
@@ -35,7 +36,7 @@ uint32_t vaddr_to_phys32(struct Memory* mem, uint32_t cr3_value, uint32_t virtad
 
 }
 
-uint64_t vaddr_to_phys(struct Memory* mem, uint64_t l1_phys, uint64_t virtaddress, bool debug, bool* is_user_page) {
+uint64_t vaddr_to_phys(struct Memory* mem, uint64_t l1_phys, uint64_t virtaddress, bool debug, bool* is_user_page, bool* cache_disable) {
 	if(debug){
 		printf("Cr3 in vaddrtophys:%lx\n", l1_phys);
 	}
@@ -64,7 +65,8 @@ uint64_t vaddr_to_phys(struct Memory* mem, uint64_t l1_phys, uint64_t virtaddres
 
 	if(l2_phys & PG_PSE_MASK) {
 		// 1G page found
-		*is_user_page = (l2_phys & PG_USER_MASK);
+		*is_user_page = !!(l2_phys & PG_USER_MASK);
+		*cache_disable = !!(l2_phys & PG_CACHE_DISABLE_MASK);
 		return  (l2_phys & 0xFFFFC0000000) | (virtaddress & 0x3FFFFFFF);
 	}
 	if(debug) printf("L2 Physical address:0x%012lx\n", l2_phys);
@@ -82,7 +84,9 @@ uint64_t vaddr_to_phys(struct Memory* mem, uint64_t l1_phys, uint64_t virtaddres
 	if(l3_phys & PG_PSE_MASK) {
 		//2^30(1G) page
 		if(debug)printf("Found 1GB page!\n");
-		*is_user_page = (l3_phys & PG_USER_MASK);
+		*is_user_page = !!(l3_phys & PG_USER_MASK);
+		*cache_disable = !!(l3_phys & PG_CACHE_DISABLE_MASK);
+
 		return (l3_phys & ~(((0x1UL) << 30) -1) | (virtaddress & ((0x1UL) << 30) -1));
 	}
 
@@ -103,7 +107,10 @@ uint64_t vaddr_to_phys(struct Memory* mem, uint64_t l1_phys, uint64_t virtaddres
 
 	if(l4_phys & PG_PSE_MASK) {
 		//2^21(2M) page
-		*is_user_page = (l4_phys & PG_USER_MASK);
+		*is_user_page = !!(l4_phys & PG_USER_MASK);
+		*cache_disable = !!(l4_phys & PG_CACHE_DISABLE_MASK);
+	// printf("tlbe:%lx\n", l4_phys);
+
 		if(debug)printf("Found 2M page! entry: %lx from virt: %lx at %lx\n", l4_phys, virtaddress, l3_phys);
 		return (l4_phys & ~(((0x1UL) << 21) -1)) | (virtaddress & (((0x1UL) << 21) -1));
 	}
@@ -115,8 +122,10 @@ uint64_t vaddr_to_phys(struct Memory* mem, uint64_t l1_phys, uint64_t virtaddres
 		printf("notfound l4 entry physaddr:%lx\n", (l4_phys & 0x3fffffffff000ULL) + (l4_index*8));
 		return NOTFOUND_ADDRESS; //Not found
 	}
-	if(debug)printf("tlbe:%lx\n", &phys);
-	*is_user_page = (phys & PG_USER_MASK);
+	// printf("tlbe:%lx\n", phys);
+	*is_user_page = !!(phys & PG_USER_MASK);
+	*cache_disable = !!(phys & PG_CACHE_DISABLE_MASK);
+
 	return  (phys & 0x3fffffffff000ULL) | (virtaddress & 0xFFFUL);
 }
 

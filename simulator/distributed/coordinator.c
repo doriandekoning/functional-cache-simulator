@@ -7,6 +7,7 @@
 #include "control_registers/control_registers.h"
 #include "filereader/sharedmemreader.h"
 #include "mappingreader/mappingreader.h"
+#include "pagetable/pagetable.h"
 #include "simulator/distributed/mpi_datatype.h"
 
 #include "config.h"
@@ -57,6 +58,9 @@ int process_cache_access(struct WorkerBuffer* buffers, cache_access* access, int
 
 
 int run_coordinator(int mpi_world_size) {
+    uint64_t mem_range_start = 0;
+	// uint64_t mem_range_end = 0x23fffffffULL; 8g
+	uint64_t mem_range_end = 1024*1024*1024; //1g
     struct mpi_buffer* mpi_buffer;
     uint8_t next_event_id;
     uint64_t current_timestamp;
@@ -68,12 +72,15 @@ int run_coordinator(int mpi_world_size) {
 	cr_change tmp_cr_change;
 	tb_start_exec tmp_tb_start_exec;
     uint64_t amount_mem_accesses;
+    bool cache_disable, is_user_page_access;
     ControlRegisterValues control_register_values;
+    struct Memory* simulated_memory;
 
     struct WorkerBuffer* worker_buffers;
 
     amount_mem_accesses = 0;
     mpi_buffer = setup_mpi_buffer(SHARED_MEM_BUF_SIZE, mpi_world_size -1);
+    simulated_memory = init_memory(NULL);
     current_timestamp = 0;
     trace_event_id_mapping = malloc(sizeof(struct EventIDMapping));
     if(get_mpi_eventid_mapping_datatype(&mpi_mapping_datatype)) {
@@ -98,6 +105,10 @@ int run_coordinator(int mpi_world_size) {
         worker_buffers[i].cur_open_request = NULL;
         worker_buffers[i].cur_buffer_idx = 0;
     }
+
+    uint64_t amount_cache_disable = 0;
+    uint64_t amount_cache_enable = 0;
+
     while(1) {
         if(mpi_buffer_get_next_event_id(mpi_buffer, &delta_t, &negative_delta_t, &next_event_id)) {
             printf("Unable to read next event id!\n");
@@ -123,28 +134,43 @@ int run_coordinator(int mpi_world_size) {
 				return 1;
 			}
             tmp_access.tick = current_timestamp;
+            cache_disable = false;
+
             #ifdef ADDRESS_TRANSLATION
-            if(paging_enabled(control_register_values, tmp_access->cpu)){
+            if(paging_enabled(control_register_values, tmp_access.cpu)){
                 uint64_t physical_addr = 0;
-                uint64_t cr3 = get_cr_value(control_register_values, cpu, 3);
-                if( get_cr_value(control_register_values, cpu, 4) & (1U << 5)) {
-        			physical_address = vaddr_to_phys(memory, cr3 & ~0xFFFUL, *address, false, is_kernel_access);
+                uint64_t cr3 = get_cr_value(control_register_values, tmp_access.cpu, 3);
+                if( get_cr_value(control_register_values, tmp_access.cpu, 4) & (1U << 5)) {
+        			physical_addr = vaddr_to_phys(simulated_memory, cr3 & ~0xFFFUL, tmp_access.address, false, &is_user_page_access, &cache_disable);
                 }else{
-                    pritnf("32bit?!\n");
-                    return;
+                    printf("32bit?!\n");
+                    return 1;
                 }
-                if(physical_address == NOTFOUND_ADDRESS) {//} || physical_address != tmp_access->physaddress)  {
-                    printf("Not able to translate virt:%lx\n", *address);
+                if(physical_addr == NOTFOUND_ADDRESS) {//} || physical_address != tmp_access->physaddress)  {
+                    printf("Not able to translate virt:%lx\n", tmp_access.address);
 		        	return 1;
                 }
-                tmp_access->address = physical_addr;
+                tmp_access.address = physical_addr;
             }
+
+            if(tmp_access.type == CACHE_EVENT_WRITE && !is_user_page_access
+				&& mem_range_start <= tmp_access.address && tmp_access.address < mem_range_end ) {
+				if(write_sim_memory(simulated_memory, tmp_access.address, tmp_access.size, &(tmp_access.data)) !=  tmp_access.size) {
+					printf("Unable to write memory!\n");
+					return 1;
+				}
+			}
             #endif
 
-            // if(process_cache_access(worker_buffers, &tmp_access, mpi_world_size)) {
-            //     printf("unable to process cache access!\n");
-            //     return 1;
-            // }
+            if(!cache_disable && process_cache_access(worker_buffers, &tmp_access, mpi_world_size)) {
+                printf("unable to process cache access!\n");
+                return 1;
+            }else if(cache_disable) {
+                amount_cache_disable++;
+                printf("Cache disabled%lu/%lu!\n", amount_cache_disable, amount_cache_enable);//Directly write to output
+            }else{
+                amount_cache_enable++;
+            }
 		} else if(next_event_id == trace_event_id_mapping->guest_update_cr) {
 			if(mpi_buffer_get_cr_change(mpi_buffer, &tmp_cr_change)) {
 				printf("Can not read cr change\n");

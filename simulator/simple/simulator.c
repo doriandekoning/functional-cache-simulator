@@ -69,13 +69,14 @@ void cache_miss_func(bool write, uint64_t timestamp, uint64_t address) {
 }
 
 int perform_cache_access(uint8_t cpu, uint64_t* address, struct CacheHierarchy* hierarchy, struct Memory* memory, ControlRegisterValues control_register_values, uint64_t timestamp, int type, bool* is_kernel_access) {
+	bool cache_disable = true;
 	#ifdef SIMULATE_ADDRESS_TRANSLATION
 	// printf("Pagingenabled:%d, %d cpu\n", paging_enabled(control_register_values, cpu), cpu);
 	if(paging_enabled(control_register_values, cpu)) {
 		uint64_t physical_address = 0;
 		uint64_t cr3 = get_cr_value(control_register_values, cpu, 3);
 		if( get_cr_value(control_register_values, cpu, 4) & (1U << 5)) { //TODO make constant
-			physical_address = vaddr_to_phys(memory, cr3 & ~0xFFFUL, *address, false, is_kernel_access);
+			physical_address = vaddr_to_phys(memory, cr3 & ~0xFFFUL, *address, false, is_kernel_access, &cache_disable);
 		}else{
 			printf("32 bit lookup!\n");
 			physical_address = vaddr_to_phys32(memory, cr3 & ~0xFFFUL, *address, true); //TODO should we sign extend?
@@ -90,7 +91,9 @@ int perform_cache_access(uint8_t cpu, uint64_t* address, struct CacheHierarchy* 
 	#endif
 
 	#ifdef SIMULATE_CACHE
-	return access_cache_in_hierarchy(hierarchy, cpu, *address, timestamp, type);
+	if(!cache_disable){
+		return access_cache_in_hierarchy(hierarchy, cpu, *address, timestamp, type);
+	}
 	#else
 	return 0;
 	#endif
