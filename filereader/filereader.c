@@ -20,7 +20,7 @@
 
 uint8_t buf[128];
 
-int read_header(FILE* file) {
+int file_read_header(FILE* file) {
   // Read eventid
     uint64_t eventid;
     READ_UINT64_FROM_FILE(eventid)

@@ -5,10 +5,12 @@
 #include "config.h"
 #include "memory.h"
 
+#define MULTI_LEVEL_MEMORY 1
 
+#ifdef MULTI_LEVEL_MEMORY
 struct Memory* init_memory(FILE* backing_file) {
 	struct Memory* mem = malloc(sizeof(struct Memory));
-	mem->table = calloc(1024, sizeof(struct Memory*));
+	mem->table = calloc(1<<14, sizeof(struct Memory*));
 	// mem->table = calloc(512, sizeof(struct Memory*));
 	if(mem->table == NULL){
 		printf("Could not calloc new simulated memory!\n");
@@ -20,7 +22,7 @@ struct Memory* init_memory(FILE* backing_file) {
 
 struct Memory* init_last_level_memory(FILE* backing_file, uint64_t address) {
 	struct Memory* mem = malloc(sizeof(struct Memory));
-	mem->table = malloc(4096);
+	mem->table = calloc(4096, sizeof(struct Memory*));
 	if(mem->table == NULL){
 		printf("Could not calloc new simulated memory!\n");
 		exit(1);
@@ -74,14 +76,14 @@ int read_sim_memory(struct Memory* mem, uint64_t address, size_t size, void* val
 	}
 
 	//L1 (bits 41:32)
-	struct Memory* l1mem = find_in_level(mem, address, (address >> 32) & 0x3FF, false);
+	// struct Memory* l1mem = find_in_level(mem, address, (address >> 32) & 0x3FF, false);
 
 	//L3 (bits 31:22)
-	struct Memory* l2mem = find_in_level(l1mem, address, (address >> 22) & 0x3FF, false);
+	struct Memory* l1mem = find_in_level(mem, address, (address >> 26) & 0x3FFF, false);
 
 	//L4 (bits 21:12)
-	struct Memory* l3mem = find_in_level(l2mem, address, (address >> 12) & 0x3FF, true);
-	memcpy(value, ((uint8_t*)l3mem->table) + (address & 0xFFF), size);
+	struct Memory* l2mem = find_in_level(l1mem, address, (address >> 12) & 0x3FFF, true);
+	memcpy(value, ((uint8_t*)l2mem->table) + (address & 0xFFF), size);
 	return size;
 }
 
@@ -109,14 +111,81 @@ int write_sim_memory(struct Memory* mem, uint64_t address, size_t size, void* va
 	}
 
 	//L1 (bits 41:32)
-	struct Memory* l1mem = find_in_level(mem, address, (address >> 32) & 0x3FF, false);
+	// struct Memory* l1mem = find_in_level(mem, address, (address >> 40) & 0x3FF, false);
 
 	//L3 (bits 31:22)
-	struct Memory* l2mem = find_in_level(l1mem, address, (address >> 22) & 0x3FF, false);
+	struct Memory* l1mem = find_in_level(mem, address, (address >> 26) & 0x3FFF, false);
 
 	//L4 (bits 21:12)
-	struct Memory* l3mem = find_in_level(l2mem, address, (address >> 12) & 0x3FF, true);
-	memcpy(((void*)l3mem->table) + (address & 0xFFF), value, size);
+	struct Memory* l2mem = find_in_level(l1mem, address, (address >> 12) & 0x3FFF, true);
+	memcpy(((void*)l2mem->table) + (address & 0xFFF), value, size);
 	return size;
 
 }
+
+
+uint64_t get_size(struct Memory* mem) {
+	uint64_t size = (1<<14) / (4096);
+	for(int i = 0; i < (1<<14); i++) {
+		struct Memory* first_level_entry = mem->table[i];
+		if(first_level_entry != NULL ){
+			size+=(1<<14) / (4096);
+			for(int j = 0; j < (1<<14); j++) {
+				struct Memory* second_level_entry = first_level_entry->table[j];
+				if(second_level_entry != NULL) {
+					size++;//(1<<14) / (4096);
+					// for(int k = 0; k < 1024; k++) {
+					// 	struct Memory* last_level_entry = second_level_entry->table[k];
+					//  	if(last_level_entry != NULL) {
+					//  		size++;
+					//  	}
+					// }
+				}
+			}
+		}
+	}
+	return size;
+}
+#else
+
+struct Memory* init_memory(FILE* backing_file) {
+	struct Memory* mem = malloc(sizeof(struct Memory));
+	printf("allocating mem!\n");
+	mem->table = malloc(0x23fffffff); // Allocate a 1gb slab
+	printf("Allocated mem!\n");
+	if(mem->table == NULL){
+		printf("Could not calloc new simulated memory!\n");
+		exit(1);
+	}
+	mem->backing_file = backing_file;
+	for(uint64_t i = 0; i < (0x23fffffff/1024); i++){
+		if(fread(((uint8_t*)mem->table) + (i*1024), 1024, 1, backing_file) != 1) {
+			printf("Unable to read from backing file!%lx\n", mem->table + (i*1024));
+			return NULL;
+		}
+	}
+	printf("Read complete memory from backing file!\n");
+	return mem;
+}
+
+int write_sim_memory(struct Memory* mem, uint64_t address, size_t size, void* value) {
+	if(address >= 0x23fffffff) {
+		printf("Access out of bounds");
+	}
+	memcpy(((uint8_t*)mem->table) + (address), value, size);
+	return size;
+}
+
+int read_sim_memory(struct Memory* mem, uint64_t address, size_t size, void* value) {
+	if(address >= 0x23fffffff) {
+		printf("Access out of bounds");
+	}
+	memcpy(value, ((uint8_t*)mem->table) + address, size);
+	return size;
+}
+
+
+uint64_t get_size(struct Memory* mem) {
+	return 1024*1024*1024;
+}
+#endif

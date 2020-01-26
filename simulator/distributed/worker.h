@@ -3,7 +3,6 @@
 #include "pagetable/pagetable.h"
 
 
-int run_worker(int world_size);
-uint64_t get_physical_address(uint64_t address, uint64_t cr3, int cpu);
+// int run_worker(int world_size);
 
 #endif /* WORKER_H */

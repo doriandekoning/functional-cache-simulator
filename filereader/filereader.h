@@ -11,7 +11,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-int read_header(FILE* file);
+int file_read_header(FILE* file);
 uint64_t file_get_memory_access(FILE* file, cache_access* access, bool write);
 uint64_t file_get_cr_change(FILE* file, cr_change* change);
 uint64_t file_get_invlpg(FILE* file, uint64_t* addr, uint8_t* cpu);

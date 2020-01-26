@@ -17,5 +17,6 @@ void free_memory();
 void convert_to_little_endian(size_t size, void* value);
 int write_sim_memory(struct Memory* mem, uint64_t address, size_t size, void* value);
 int read_sim_memory(struct Memory* mem, uint64_t address, size_t size, void* value);
+uint64_t get_size(struct Memory* mem);
 
 #endif /* __MEMORY_H */

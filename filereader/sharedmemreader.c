@@ -77,7 +77,7 @@ struct shared_mem* setup_shared_mem() {
     printf("Waiting to aquire first read sem!\n");
     sem_wait(smem->read_sem_1);
     printf("Finished smem setup!\n");
-    sem_wait(smem->start_sem);
+    // sem_wait(smem->start_sem);
     return smem;
 }
 
@@ -99,25 +99,31 @@ void read_from_smem(struct shared_mem* smem, size_t size, uint8_t* result) {
             memcpy(result, smem->buf_2 + smem->current_read_idx, bytes_first_buf);
         }
         // Change buffer
-        if(smem->current_buf_idx == 1) {
-            sem_post(smem->write_sem_1);
-            sem_wait(smem->read_sem_2);
-            smem->current_buf_idx = 2;
-        }else {
-            sem_post(smem->write_sem_2);
-            sem_wait(smem->read_sem_1);
-            smem->current_buf_idx = 1;
-        }
+        get_current_buffer(smem);
+
         smem->current_read_idx = bytes_second_buf;
-
-        //Copy remainder
-
+        //Copy remaining bytes
         if(smem->current_buf_idx == 1) {
             memcpy(result + bytes_first_buf, smem->buf_1, bytes_second_buf);
         }else{
             memcpy(result + bytes_first_buf, smem->buf_2, bytes_second_buf);
         }
      }
+}
+
+void* get_current_buffer(struct shared_mem* smem) {
+    //Wait for buffer to be released
+    if(smem->current_buf_idx == 1) {
+        sem_post(smem->write_sem_1);
+        sem_wait(smem->read_sem_2);
+        smem->current_buf_idx = 2;
+        return smem->buf_2;
+    }else {
+        sem_post(smem->write_sem_2);
+        sem_wait(smem->read_sem_1);
+        smem->current_buf_idx = 1;
+        return smem->buf_1;
+    }
 }
 
 

@@ -1,3 +1,5 @@
+#ifdef TEST
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -261,6 +263,7 @@ int test_backing_memory_write() {
 
 
 
+
 int main(int argc, char **argv) {
 	int failed_tests = 0;
 
@@ -287,3 +290,5 @@ int main(int argc, char **argv) {
 	}
 	return 0;
 }
+
+#endif

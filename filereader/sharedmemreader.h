@@ -1,6 +1,6 @@
 
-#ifndef FILEREADER_H
-#define FILEREADER_H
+#ifndef SHAREDMEMREADER_H
+#define SHAREDMEMREADER_H
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -38,7 +38,8 @@ uint64_t smem_get_memory_access(struct shared_mem* smem, cache_access* access, b
 uint64_t smem_get_cr_change(struct shared_mem* smem, cr_change* change);
 uint64_t smem_get_invlpg(struct shared_mem* smem, uint64_t* addr, uint8_t* cpu);
 uint64_t smem_get_tb_start_exec(struct shared_mem* smem, tb_start_exec* tb_start_exec);
-int smem_get_next_event_id(struct shared_mem* smem, uint64_t* delta_t, bool* negative_delta_t, uint8_t* event_id) ;
+int smem_get_next_event_id(struct shared_mem* smem, uint64_t* delta_t, bool* negative_delta_t, uint8_t* event_id);
+void* get_current_buffer(struct shared_mem* mem);
 
-#endif //FILEREADER_H
+#endif //SHAREDMEMREADER_H
 

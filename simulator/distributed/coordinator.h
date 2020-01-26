@@ -7,7 +7,7 @@
 #include <stdbool.h>
 
 
-int run_coordinator(int world_size, bool read_pgtables, char* input_pagetables, char* cr_values_path);
+int run_coordinator(int world_size);
 uint64_t get_physical_address(uint64_t address, uint64_t cr3, int cpu);
 
 #endif /* COORDINATOR_H */

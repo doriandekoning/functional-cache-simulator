@@ -1,7 +1,8 @@
 #include <stdint.h>
-#include <control_registers/control_registers.h>
 #include <stdio.h>
-#include <config.h>
+
+#include "control_registers/control_registers.h"
+#include "config.h"
 
 ControlRegisterValues init_control_register_values(uint8_t amount_cpus) {
     return calloc(sizeof(uint64_t), amount_cpus * AMOUNT_CONTROL_REGISTERS);

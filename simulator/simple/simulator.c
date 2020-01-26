@@ -174,11 +174,13 @@ int main(int argc, char **argv) {
 	printf("Input file: %s\n", input_file);
 	char* output_file = argv[3];
 	printf("Output file: %s\n", output_file);
+	#ifdef SIMULATE_MEMORY
 	char* memory_backing_file_location = NULL;
 	if(argc >= 4) {
 		memory_backing_file_location = argv[4];
 	}
 	printf("Memdump file: %s\n", memory_backing_file_location);
+	#endif
 	char* initial_cr_values_file = NULL;
 	if(argc >= 5) {
 		initial_cr_values_file = argv[5];
@@ -186,17 +188,17 @@ int main(int argc, char **argv) {
 	printf("Initial cr values file: %s\n", initial_cr_values_file);
 
 	#ifdef INPUT_SMEM
-		struct shared_mem* in = setup_shared_mem();
+	struct shared_mem* in = setup_shared_mem();
 	#elif INPUT_FILE
-		FILE *in = fopen(input_file, "r");
-		if(in == NULL) {
-			printf("Could not open input file!\n");
-			return 1;
-		}
-		if(read_header(in) != 0) {
-			printf("Unable to read header\n");
-			return 1;
-		}
+	FILE *in = fopen(input_file, "r");
+	if(in == NULL) {
+		printf("Could not open input file!\n");
+		return 1;
+	}
+	if(read_header(in) != 0) {
+		printf("Unable to read header\n");
+		return 1;
+	}
 	#endif
 	unsigned char buf[4048];
 
@@ -206,12 +208,7 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 	print_mapping(&trace_mapping);
-	debug_printf("Event id mapping:\n%d->%s\n%d->%s\n%d->%s\n",
-		trace_mapping.guest_update_cr, "guest_update_cr",
-		trace_mapping.guest_mem_load_before_exec, "guest_mem_load_before_exec",
-		trace_mapping.guest_mem_store_before_exec, "guest_mem_store_before_exec"
-	);
-	debug_printf("Using: \"%s\" as input\n",  input_file);
+
 
 	out = fopen(output_file, "w");
 	if(out == NULL) {
@@ -219,9 +216,11 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
+	struct Memory* simulated_memory;
 	struct CacheHierarchy* cache = setup_cache();
 	uint64_t mem_range_start = 0;
-	uint64_t mem_range_end = 0x3ffdffffUL;
+	// uint64_t mem_range_end = 0x23fffffffULL; 8g
+	uint64_t mem_range_end = 1024*1024*1024; //1g
 	uint64_t cr_update_count = 0;
 	uint64_t amount_reads = 0;
 	uint64_t amount_writes = 0;
@@ -237,7 +236,6 @@ int main(int argc, char **argv) {
 	tb_start_exec* tmp_tb_start_exec = malloc(sizeof(tb_start_exec));
 	uint64_t delta_t = 0;
 	uint64_t current_timestamp = 0;
-	struct Memory* simulated_memory;
 	uint8_t next_event_id;
 	bool negative_delta_t, hit;
 	bool paging_is_enabled;
@@ -246,6 +244,7 @@ int main(int argc, char **argv) {
 	int after_failed = 0;
 	uint64_t amount_events = 0;
 	bool is_user_page_access;
+	#ifdef SIMULATE_MEMORY
 	printf("Setting up memory!\n");
 	if(memory_backing_file_location != NULL) {
 		printf("Opening memory backing file:%s\n", memory_backing_file_location);
@@ -256,6 +255,9 @@ int main(int argc, char **argv) {
 		}
 	}
 	simulated_memory = init_memory(memory_backing_file);
+	#else
+	simulated_memory = init_memory(NULL);
+	#endif
 	if(initial_cr_values_file != NULL) {
 		if(read_cr_values_from_dump(initial_cr_values_file, control_register_values)) {
 			printf("Unable to read initial cr register values!\n");
@@ -381,6 +383,7 @@ int main(int argc, char **argv) {
 	printf("Amount of user accesses:\t\t%lu\n", amount_user_accesses);
 	printf("Amount of tlb flush instructions\t%lu\n", amount_tlb_flush);
 	printf("Amount unable to translate\t\t%lu\n", amount_unable_to_translate);
+	printf("Simulated memory size\t\t%lu\n", get_size(simulated_memory));
 	free(tmp_access);
 	free(tmp_cr_change);
 }
