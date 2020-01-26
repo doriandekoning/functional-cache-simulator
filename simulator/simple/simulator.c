@@ -124,32 +124,6 @@ struct CacheHierarchy* setup_cache() {
 	return hierarchy;
 }
 
-#ifdef SIMULATE_ADDRESS_TRANSLATION
-int read_pagetables(char* path, struct Memory* mem) {
-	DIR* d = opendir(path);
-	struct dirent *dir;
-	printf("Reading pagetables in directory:%s\n", path);
-	if(d) {
-		while((dir = readdir(d)) != NULL) {
-			if(!strcmp(dir->d_name, ".") || !strcmp(dir->d_name, "..")){
-				continue;
-			}
-			char fPath[512];
-			strcpy(fPath, path);
-			strcat(fPath, "/");
-			strcat(fPath, dir->d_name);
-			if(read_pagetable(mem, fPath)){
-				printf("Could not read pagetable:%s\n", &fPath);
-				return 1;
-			}
-		}
-		closedir(d);
-	}
-	printf("Succesfully read pagetables!\n");
-	return 0;
-}
-#endif
-
 
 int main(int argc, char **argv) {
 	struct EventIDMapping trace_mapping;
