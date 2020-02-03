@@ -6,16 +6,16 @@
 #include "state.h"
 #include "bus.h"
 
-struct CacheState* setup_cachestate(struct CacheState* higher_level_cache, bool write_back, size_t size, size_t line_size, int associativity, EvictionFunc evictionfunc, struct CoherencyProtocol* coherency_protocol, CacheMissFunc cache_miss_func){
+struct CacheState* setup_cachestate(struct CacheState* higher_level_cache, bool write_back, size_t size, size_t line_size, uint32_t associativity, EvictionFunc evictionfunc, struct CoherencyProtocol* coherency_protocol, CacheMissFunc cache_miss_func){
 
 	struct CacheState* new_state = malloc(sizeof(struct CacheState));
 	if(higher_level_cache != NULL) {
 		if(higher_level_cache->size % size != 0){
-			printf("Error during cache setup: higher_level_cache size %d is not a multiple of size: %d\n", higher_level_cache->size, size);
+			printf("Error during cache setup: higher_level_cache size %ld is not a multiple of size: %ld\n", higher_level_cache->size, size);
 			return NULL;
 		}
 		if(higher_level_cache->line_size != line_size) {
-			printf("Error during cache setup: higher_level_cache line size should be equal (%d) but is not (%d)\n", higher_level_cache->line_size, line_size);
+			printf("Error during cache setup: higher_level_cache line size should be equal (%ld) but is not (%ld)\n", higher_level_cache->line_size, line_size);
 			return NULL;
 		}
 		add_lower_level_cache(higher_level_cache, new_state);
@@ -36,7 +36,7 @@ struct CacheState* setup_cachestate(struct CacheState* higher_level_cache, bool 
 		return NULL;
 	}
 	new_state->associativity = associativity;
-	for(int i = 0; i < size; i++) {
+	for(size_t i = 0; i < size; i++) {
 		new_state->lines[i].state = CACHELINE_STATE_INVALID;
 		new_state->lines[i].tag = -1;
 		new_state->lines[i].last_used = 0;
@@ -51,7 +51,7 @@ void add_lower_level_cache(struct CacheState* higher_level_cache, struct CacheSt
 
 		struct CacheState** old_lower_level_caches = higher_level_cache->lower_level_caches;
 		higher_level_cache->lower_level_caches = malloc(sizeof(struct CacheState*)* (higher_level_cache->cur_size_lower_level_caches_array+8));
-		for(int i = 0; i < higher_level_cache->cur_size_lower_level_caches_array; i++) {
+		for(size_t i = 0; i < higher_level_cache->cur_size_lower_level_caches_array; i++) {
 			higher_level_cache->lower_level_caches[i] = old_lower_level_caches[i];
 		}
 		higher_level_cache->cur_size_lower_level_caches_array += 8;
@@ -71,7 +71,9 @@ void free_cachestate(struct CacheState* state) {
 }
 
 void register_cache_miss(bool write, uint64_t address) {
-	// printf("Cache miss to address:%016lx\n", address);
+	(void)(write);
+	(void)(address);
+	debug_printf("Cache miss to address%d:%016lx\n", write, address);
 }
 
 int get_line_location_in_cache(struct CacheState* state, uint64_t address) {
@@ -84,8 +86,8 @@ int get_line_location_in_cache(struct CacheState* state, uint64_t address) {
 	return -1;
 }
 
-void inform_lower_level_caches_eviction(struct CacheState* state, int line_idx, uint64_t address) {
-	for(int i = 0; i < state->amount_lower_level_caches; i++) {
+void inform_lower_level_caches_eviction(struct CacheState* state, uint64_t address) {
+	for(size_t i = 0; i < state->amount_lower_level_caches; i++) {
 		int lower_level_cache_line_idx = get_line_location_in_cache(state->lower_level_caches[i], address);
 		if(lower_level_cache_line_idx >= 0){
 			state->lower_level_caches[i]->lines[lower_level_cache_line_idx].state = CACHELINE_STATE_INVALID;
@@ -95,7 +97,6 @@ void inform_lower_level_caches_eviction(struct CacheState* state, int line_idx, 
 
 void access_cache(struct CacheState* state, uint64_t address, uint64_t timestamp, bool write) {
 	debug_printf("Accessing cache state address:%lx, write: %d\n", address, write);
-	int lru_idx;
 	int line_idx = get_line_location_in_cache(state, address);
 	int old_state = CACHELINE_STATE_INVALID;
 	if(line_idx >= 0) {
@@ -111,7 +112,7 @@ void access_cache(struct CacheState* state, uint64_t address, uint64_t timestamp
 		}
 		// Fill cache, update the new entry (and evict the oldest one)
 		line_idx = state->eviction_func(state, address);
-		inform_lower_level_caches_eviction(state, line_idx, address);
+		inform_lower_level_caches_eviction(state, address);
 		if(state->coherency_protocol->flush_needed_on_evict(state->lines[line_idx].state)){
 			state->cache_miss_func(write, timestamp, address);
 		}

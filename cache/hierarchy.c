@@ -20,14 +20,14 @@ struct CacheLevel* init_cache_level(size_t max_caches_amount, bool has_instructi
 }
 
 void free_cache_level(struct CacheLevel* level) {
-    for(int i = 0; i < level->amount_caches; i++) {
+    for(size_t i = 0; i < level->amount_caches; i++) {
         free_cachestate(level->caches[i]);
     }
     free_bus(level->bus);
     free(level);
 }
 
-struct CacheHierarchy* init_cache_hierarchy(int amount_cpus) {
+struct CacheHierarchy* init_cache_hierarchy(size_t amount_cpus) {
     struct CacheHierarchy* hierarchy =  malloc(sizeof(struct CacheHierarchy));
     hierarchy->amount_cpus = amount_cpus;
     hierarchy->amount_levels = 0;
@@ -35,7 +35,7 @@ struct CacheHierarchy* init_cache_hierarchy(int amount_cpus) {
 }
 
 void free_cache_hierarchy(struct CacheHierarchy* hierarchy){
-    for(int i = 0; i < hierarchy->amount_levels; i++) {
+    for(size_t i = 0; i < hierarchy->amount_levels; i++) {
         free_cache_level(hierarchy->levels[i]);
     }
     free(hierarchy);
@@ -89,10 +89,10 @@ int add_level(struct CacheHierarchy* hierarchy, struct CacheLevel* level) {
     if(hierarchy->amount_levels > 0) {
         struct CacheLevel* last_level = hierarchy->levels[hierarchy->amount_levels-1];
         if(level->amount_caches != 1 && level->amount_caches != last_level->amount_caches) {
-            printf("Level has wrong amount of caches, previous level has: %d so should be that or 1 but is: %d\n", last_level->amount_caches,  level->amount_caches);
+            printf("Level has wrong amount of caches, previous level has: %ld so should be that or 1 but is: %ld\n", last_level->amount_caches,  level->amount_caches);
             return 2;
         }
-        for(int i = 0; i < last_level->amount_caches; i++) {
+        for(uint32_t i = 0; i < last_level->amount_caches; i++) {
             // If new level only has a single cache all caches in the last_level have this cache as higher level cache
             add_lower_level_cache(level->caches[level->amount_caches == 1 ? 0 : i], last_level->caches[i]);
             if(level->has_instruction_caches) {

@@ -9,9 +9,9 @@
 #define MAX_CACHE_LEVELS 8
 
 struct CacheLevel {
-    int amount_caches;
-    int size_caches_array;
-    int size_instruction_caches_array;
+    size_t amount_caches;
+    size_t size_caches_array;
+    size_t size_instruction_caches_array;
     struct CacheState** caches;
     struct CacheState** instruction_caches;
     struct Bus* bus;
@@ -19,14 +19,14 @@ struct CacheLevel {
 };
 
 struct CacheHierarchy {
-    int amount_cpus;
-    int amount_levels;
+    size_t amount_cpus;
+    size_t amount_levels;
     struct CacheLevel* levels[MAX_CACHE_LEVELS];
 };
 
 struct CacheLevel* init_cache_level(size_t max_caches_amount, bool has_instruction_caches);
 void free_cache_level(struct CacheLevel* level);
-struct CacheHierarchy* init_cache_hierarchy(int amount_cpus);
+struct CacheHierarchy* init_cache_hierarchy(size_t amount_cpus);
 void free_cache_hierachy(struct CacheHierarchy* hierarchy);
 
 int add_level(struct CacheHierarchy* hierarchy, struct CacheLevel* level);

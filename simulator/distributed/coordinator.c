@@ -110,6 +110,7 @@ int run_coordinator(int mpi_world_size) {
     uint64_t amount_cache_enable = 0;
 
     while(1) {
+
         if(mpi_buffer_get_next_event_id(mpi_buffer, &delta_t, &negative_delta_t, &next_event_id)) {
             printf("Unable to read next event id!\n");
             return 1;

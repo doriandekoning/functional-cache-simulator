@@ -22,8 +22,6 @@ void free_bus(struct Bus* bus){
 void add_cache_to_bus(struct Bus* bus, struct CacheState* cache) {
 	// Check if array needs to be sized up
 	if(bus->amount_caches == bus->cur_size_caches_array){
-        printf("TEst!\n");
-
 		struct CacheState** old_caches = bus->caches;
 		bus->caches = malloc(sizeof(struct CacheState*)* (bus->cur_size_caches_array+8));
 		for(int i = 0; i < bus->cur_size_caches_array; i++) {

@@ -52,7 +52,7 @@ int run_input_reader(char* input_path, char* mapping_path, char* cr3_path, int m
 	print_mapping(&trace_mapping);
 
 	if(MPI_Send(&trace_mapping, 1, mpi_mapping_datatype, mpi_world_size-2, 0, MPI_COMM_WORLD)) {
-		printf("Unable ot send mapping!\n");
+		printf("Unable to send mapping!\n");
 		return 1;
 	}
 
@@ -67,10 +67,10 @@ int run_input_reader(char* input_path, char* mapping_path, char* cr3_path, int m
 		}
 		#endif
 
-		if(MPI_Send(buf, SHARED_MEM_BUF_SIZE, MPI_CHAR, mpi_world_size-2, 1, MPI_COMM_WORLD) != MPI_SUCCESS ){
-			printf("Unable to send!\n");
-			return 1;
-		}
+		// if(MPI_Send(buf, SHARED_MEM_BUF_SIZE, MPI_CHAR, mpi_world_size-2, 1, MPI_COMM_WORLD) != MPI_SUCCESS ){
+		// 	printf("Unable to send!\n");
+		// 	return 1;
+		// }
 	}
 
 	return 0;

@@ -9,12 +9,12 @@
 #include "filereader.h"
 #include "traceevents.h"
 
-#define READ_UINT8_FROM_FILE(variable)  if(fread(&variable, 1, 1, file) != 1){printf("Could not read uint8 from file!\n");return -1;}
-#define READ_UINT16_FROM_FILE(variable) if(fread(&variable, 2, 1, file) != 1) {printf("Could not read uint16 from file!\n");return -1;}
-#define READ_UINT32_FROM_FILE(variable) if(fread(&variable, 4, 1, file) != 1) {printf("Could not read uint32 from file!\n");return -1;}
-#define READ_UINT48_FROM_FILE(variable) if(fread(&variable, 6, 1, file) != 1) {printf("Could not read uint48 from file!\n"); return -1;}
-#define READ_UINT64_FROM_FILE(variable) if(fread(&variable, 8, 1, file) != 1) {printf("Could not read uint64 from file!\n");return -1;}
-#define READ_BYTES_FROM_FILE(variable, length) if(fread(variable, 1, length, file) != length) {printf("Could not read from file!\n");return -1;}
+#define READ_UINT8_FROM_FILE(variable)  if(fread(&variable, 1, 1, file) != 1){printf("Could not read uint8 from file:%lu!\n", ftell(file));return -1;}
+#define READ_UINT16_FROM_FILE(variable) if(fread(&variable, 2, 1, file) != 1) {printf("Could not read uint16 from file:%lu!\n",ftell(file));return -1;}
+#define READ_UINT32_FROM_FILE(variable) if(fread(&variable, 4, 1, file) != 1) {printf("Could not read uint32 from file:%lu!\n",ftell(file));return -1;}
+#define READ_UINT48_FROM_FILE(variable) if(fread(&variable, 6, 1, file) != 1) {printf("Could not read uint48 from file:%lu!\n",ftell(file)); return -1;}
+#define READ_UINT64_FROM_FILE(variable) if(fread(&variable, 8, 1, file) != 1) {printf("Could not read uint64 from file:%lu!\n",ftell(file));return -1;}
+#define READ_BYTES_FROM_FILE(variable, length) if(fread(variable, 1, length, file) != length) {printf("Could not read from file:%lu!\n",ftell(file));return -1;}
 
 #define UINT_FROM_BUF(type, index) *(type*)(buf+index)
 
@@ -25,7 +25,7 @@ int file_read_header(FILE* file) {
     uint64_t eventid;
     READ_UINT64_FROM_FILE(eventid)
     if(eventid != 0xffffffffffffffff) {
-        printf("Eventid is wrong %llx\n", eventid);
+        printf("Eventid is wrong %lx\n", eventid);
         return 1;
     }
 
@@ -33,7 +33,7 @@ int file_read_header(FILE* file) {
     uint64_t magicnumber;
     READ_UINT64_FROM_FILE(magicnumber)
     if(magicnumber != 0xf2b177cb0aa429b4) {
-        printf("Magicnumber is wrong %llx\n", magicnumber);
+        printf("Magicnumber is wrong %lx\n", magicnumber);
         return 2;
     }
 

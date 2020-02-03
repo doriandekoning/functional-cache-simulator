@@ -43,20 +43,15 @@ int read_cr_values_from_dump(char* cr_values_path, ControlRegisterValues control
 		return 1;
 	}
 	uint64_t processor = 0;
-  	int string_offset = 0;
 	uint64_t value;
 	for(int i = 0; i < AMOUNT_SIMULATED_PROCESSORS; i++){
-   		fscanf(f, "%llx\n", &processor);
+   		fscanf(f, "%lu\n", &processor);
     	for(int j = 0; j<5; j++) {
-
-      		fscanf(f, "%llx\n", &value);
+      		fscanf(f, "%lx\n", &value);
 			set_cr_value(control_register_values, processor, j, value);
 	    }
 		// debug_printf("Paging is: %s\n", paging_enabled(control_register_values, tmp_access->cpu) ? "enabled" : "disabled");
 		debug_printf("Initial CR values for processor:%lx\n", processor);
-		for(int i = 0; i < 5; i++ ) {
-			printf("Processor[%lx]CR%d=0x%lx\n", processor, i, get_cr_value(control_register_values, processor, i));
-		}
 	}
 	return 0;
 }

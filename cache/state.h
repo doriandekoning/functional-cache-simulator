@@ -67,7 +67,7 @@ typedef int (*EvictionFunc)(struct CacheState*, uint64_t);
 // - write_back: true if cache is write back, false if cache is write througn
 // - size: the size of the cache in the amount of lines, the size of the higher_level_cache should be a multiple of this
 // - line_size: the cache line size in bytes
-struct CacheState* setup_cachestate(struct CacheState* higher_level_cache, bool write_back, size_t size, size_t line_size, int associativity, EvictionFunc evictionfunc, struct CoherencyProtocol* coherency_protocol, CacheMissFunc cache_miss_func);
+struct CacheState* setup_cachestate(struct CacheState* higher_level_cache, bool write_back, size_t size, size_t line_size, uint32_t associativity, EvictionFunc evictionfunc, struct CoherencyProtocol* coherency_protocol, CacheMissFunc cache_miss_func);
 
 void free_cachestate(struct CacheState* state);
 
