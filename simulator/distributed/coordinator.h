@@ -7,7 +7,7 @@
 #include <stdbool.h>
 
 
-int run_coordinator(int world_size);
-uint64_t get_physical_address(uint64_t address, uint64_t cr3, int cpu);
+int run_coordinator(int world_size, int amount_cpus, char* memory_range_base_path);
+uint64_t get_physical_address(uint64_t address, uint64_t cr3);
 
 #endif /* COORDINATOR_H */

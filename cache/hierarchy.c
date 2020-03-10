@@ -78,6 +78,8 @@ int add_caches_to_level(struct CacheLevel* level, struct CacheState* data_cache,
 
 
 int add_level(struct CacheHierarchy* hierarchy, struct CacheLevel* level) {
+printf("AAA!%d\n", level->has_instruction_caches);
+
     if(hierarchy->amount_levels == MAX_CACHE_LEVELS) {
         printf("Maximum amount of levels reached!\n");
         return 1;
@@ -93,10 +95,14 @@ int add_level(struct CacheHierarchy* hierarchy, struct CacheLevel* level) {
             return 2;
         }
         for(uint32_t i = 0; i < last_level->amount_caches; i++) {
+
             // If new level only has a single cache all caches in the last_level have this cache as higher level cache
             add_lower_level_cache(level->caches[level->amount_caches == 1 ? 0 : i], last_level->caches[i]);
             if(level->has_instruction_caches) {
+                printf("MOTHERFUCKER!\n");
                 add_lower_level_cache(level->instruction_caches[level->amount_caches == 1 ? 0 : i], last_level->instruction_caches[i]);
+            }else if(last_level->has_instruction_caches) {
+                add_lower_level_cache(level->caches[level->amount_caches == 1 ? 0 : i], last_level->instruction_caches[i]);
             }
         }
     }
@@ -114,8 +120,12 @@ int access_cache_in_hierarchy(struct CacheHierarchy* hierarchy, uint64_t cpu, ui
         printf("Unknown cache event type: %d\n", type);
         return 1;
     }
+    if(hierarchy->amount_levels == 0) {
+        printf("Missed cache hierarchy:%lx", address);
+        return 0;
+    }
     int cpu_idx = (hierarchy->levels[0]->amount_caches == 1) ? 0 : cpu;
-    if(type == CACHE_EVENT_INSTRUCTION_FETCH) {
+    if(hierarchy->levels[0]->has_instruction_caches && type == CACHE_EVENT_INSTRUCTION_FETCH) {
         access_cache(hierarchy->levels[0]->instruction_caches[cpu_idx], address, timestamp, false);
     }else{
         access_cache(hierarchy->levels[0]->caches[cpu_idx], address, timestamp, type == CACHE_EVENT_WRITE);

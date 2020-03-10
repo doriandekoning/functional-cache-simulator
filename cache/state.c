@@ -9,6 +9,7 @@
 struct CacheState* setup_cachestate(struct CacheState* higher_level_cache, bool write_back, size_t size, size_t line_size, uint32_t associativity, EvictionFunc evictionfunc, struct CoherencyProtocol* coherency_protocol, CacheMissFunc cache_miss_func){
 
 	struct CacheState* new_state = malloc(sizeof(struct CacheState));
+
 	if(higher_level_cache != NULL) {
 		if(higher_level_cache->size % size != 0){
 			printf("Error during cache setup: higher_level_cache size %ld is not a multiple of size: %ld\n", higher_level_cache->size, size);
@@ -19,8 +20,9 @@ struct CacheState* setup_cachestate(struct CacheState* higher_level_cache, bool 
 			return NULL;
 		}
 		add_lower_level_cache(higher_level_cache, new_state);
+	}else {
+		new_state->higher_level_cache = NULL;
 	}
-
 	new_state->amount_lower_level_caches = 0;
 	new_state->lower_level_caches = NULL;
 	new_state->write_back = write_back;
@@ -96,7 +98,6 @@ void inform_lower_level_caches_eviction(struct CacheState* state, uint64_t addre
 }
 
 void access_cache(struct CacheState* state, uint64_t address, uint64_t timestamp, bool write) {
-	debug_printf("Accessing cache state address:%lx, write: %d\n", address, write);
 	int line_idx = get_line_location_in_cache(state, address);
 	int old_state = CACHELINE_STATE_INVALID;
 	if(line_idx >= 0) {
@@ -106,14 +107,15 @@ void access_cache(struct CacheState* state, uint64_t address, uint64_t timestamp
 		if(state->higher_level_cache != NULL) {
 			// Cache miss, search higher_level_cache cache
 			access_cache(state->higher_level_cache, address, timestamp, write);
-		}else{
+		}else if(state->cache_miss_func != NULL){
 			// Cache miss but there is no higher_level_cache cache, register miss
 			state->cache_miss_func(write, timestamp, address);
 		}
 		// Fill cache, update the new entry (and evict the oldest one)
 		line_idx = state->eviction_func(state, address);
+
 		inform_lower_level_caches_eviction(state, address);
-		if(state->coherency_protocol->flush_needed_on_evict(state->lines[line_idx].state)){
+		if(state->coherency_protocol && state->coherency_protocol->flush_needed_on_evict(state->lines[line_idx].state) && state->cache_miss_func != NULL){
 			state->cache_miss_func(write, timestamp, address);
 		}
 		state->lines[line_idx].tag = CALCULATE_TAG(state, address);
@@ -127,12 +129,16 @@ void access_cache(struct CacheState* state, uint64_t address, uint64_t timestamp
 	}
 
 	// Inform other caches on bus of eviction
-	int bus_req;
-	int new_state = state->coherency_protocol->new_state_func(old_state, event, &bus_req);
-	state->lines[line_idx].state = new_state;
+	if(state->coherency_protocol) {
+		int bus_req;
+		int new_state = state->coherency_protocol->new_state_func(old_state, event, &bus_req);
+		state->lines[line_idx].state = new_state;
 
-	if(state->bus != NULL && bus_req>=0) {
-		handle_bus_event(state->bus, bus_req, address, state);
+		if(state->bus != NULL && bus_req>=0) {
+			handle_bus_event(state->bus, bus_req, address, state);
+		}
+	}else{
+		state->lines[line_idx].state = 2;
 	}
 
 }

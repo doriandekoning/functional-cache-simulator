@@ -1,3 +1,4 @@
+#ifdef SIMULATE_ADDRESS_TRANSLATION
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -216,3 +217,4 @@ int read_pagetable(int amount_mems, struct Memory* mems, char* path) {
 	return 0;
 
 }
+#endif

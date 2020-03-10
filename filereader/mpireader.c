@@ -1,4 +1,4 @@
-#ifdef OMPI_MPICC
+#ifdef USING_MPI
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
@@ -145,4 +145,4 @@ int mpi_buffer_get_next_event_id(struct mpi_buffer* buf, uint64_t* delta_t, bool
 }
 
 
-#endif /*OMPI_MPICC*/
+#endif /*USING_MPI*/

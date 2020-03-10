@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <dirent.h>
+#include <time.h>
 
 #ifdef SIMULATE_ADDRESS_TRANSLATION
 #ifndef SIMULATE_MEMORY
@@ -54,29 +55,38 @@
 #define PE_MASK (1 << 0)
 
 
+char* translated_trace = "/media/ssd/int_trace";
+
 FILE* out;
+FILE* translated_out;
 
 struct __attribute__((__packed__)) OutputStruct{
-	bool write;
 	int64_t timestamp;
 	uint64_t address;
+	uint8_t write;
+	uint8_t size;
+
 };
 
+int amount_misses = 0;
 void cache_miss_func(bool write, uint64_t timestamp, uint64_t address) {
 	struct OutputStruct outstruct = {
-		.write = write,
 		.timestamp = timestamp,
 		.address = address,
+		.write = write,
+		.size = 8,
 	};
+	amount_misses++;
 	fwrite(&outstruct, 1, sizeof(struct OutputStruct), out);
 }
 
 int perform_mem_access(int amount_memories, struct Memory* memories, uint8_t cpu, uint64_t* address, struct CacheHierarchy* hierarchy, ControlRegisterValues control_register_values, uint64_t timestamp, int type, bool* is_user_page) {
+
 	#ifdef SIMULATE_ADDRESS_TRANSLATION
+	uint64_t physical_address = 0;
 	bool cache_disable = false;
 	// printf("Pagingenabled:%d, %d cpu\n", paging_enabled(control_register_values, cpu), cpu);
 	if(paging_enabled(control_register_values, cpu)) {
-		uint64_t physical_address = 0;
 		uint64_t cr3 = get_cr_value(control_register_values, cpu, 3);
 		debug_printf("CR3 value using: %lx\n", cr3);
 		if( get_cr_value(control_register_values, cpu, 4) & (1U << 5)) { //TODO make constant
@@ -92,20 +102,16 @@ int perform_mem_access(int amount_memories, struct Memory* memories, uint8_t cpu
 		}
 		*address = physical_address;
 		debug_print("Performed virt to phys translation!\n");
+	}else{
+		printf("Not translating?%lx\n", *address);
 	}
 	#endif
 	#ifdef SIMULATE_CACHE
 	if(!cache_disable){
 		// Check if address is in range
-		for(int i = 0; i < amount_memories; i++) {
-			if(memories[i].addr_start <= *address && *address < memories[i].addr_end ) {
-				return access_cache_in_hierarchy(hierarchy, cpu, *address, timestamp, type);
-			}
-		}
-		printf("Address out of range!\n");
+		return access_cache_in_hierarchy(hierarchy, cpu, *address, timestamp, type);
 	}
 	return 0;
-
 	#else
 	(void)type;
 	(void)timestamp;
@@ -116,14 +122,35 @@ int perform_mem_access(int amount_memories, struct Memory* memories, uint8_t cpu
 	(void)address;
 	(void)is_user_page;
 	(void)control_register_values;
-	return 0;
 	#endif
+	#ifdef OUTPUT_TRANSLATION
+	uint8_t size = CACHE_LINE_SIZE;
+	fwrite(address, 8, 1, translated_out);
+	fwrite(&timestamp, 8, 1, translated_out);
+	fwrite(&type, 1, 1, translated_out);
+	fwrite(&size, 1, 1, translated_out);
+	#endif
+	return 0;
+
 }
 
-struct CacheHierarchy* setup_cache() {
-	struct CacheHierarchy* hierarchy = init_cache_hierarchy(AMOUNT_SIMULATED_PROCESSORS);
-	struct CacheLevel* l1 = init_cache_level(AMOUNT_SIMULATED_PROCESSORS, true);
-	for(int i = 0; i < AMOUNT_SIMULATED_PROCESSORS; i++) {
+
+#ifdef SIMPLE_CACHE
+struct CacheHierarchy* setup_cache(int amount_cpus) {
+	struct CacheHierarchy* hierarchy = init_cache_hierarchy(amount_cpus);
+	struct CacheLevel* l1 = init_cache_level(1, false);
+	struct CacheState* l1_cache = setup_cachestate(NULL, false, 4*1024*1024, 8, 4, &find_line_to_evict_lru, NULL, &cache_miss_func);
+	add_caches_to_level(l1, l1_cache, NULL);
+	if(add_level(hierarchy, l1) != 0) {
+		exit(1);
+	}
+	return hierarchy;
+}
+#else
+struct CacheHierarchy* setup_cache(int amount_cpus) {
+	struct CacheHierarchy* hierarchy = init_cache_hierarchy(amount_cpus);
+	struct CacheLevel* l1 = init_cache_level(amount_cpus, true);
+	for(int i = 0; i < amount_cpus; i++) {
 		struct CacheState* dcache = setup_cachestate(NULL, true, 32*1024, CACHE_LINE_SIZE, ASSOCIATIVITY, &find_line_to_evict_lru, &msi_coherency_protocol, &cache_miss_func);
 		struct CacheState* icache = setup_cachestate(NULL, true, 32*1024, CACHE_LINE_SIZE, ASSOCIATIVITY, &find_line_to_evict_lru, &msi_coherency_protocol, &cache_miss_func);
 		add_caches_to_level(l1, dcache, icache);
@@ -131,15 +158,15 @@ struct CacheHierarchy* setup_cache() {
 	if(add_level(hierarchy, l1) != 0 ){
 		exit(1);
 	}
-	struct CacheLevel* l2 = init_cache_level(AMOUNT_SIMULATED_PROCESSORS, false);
-	for(int i = 0; i < AMOUNT_SIMULATED_PROCESSORS; i++) {
+	struct CacheLevel* l2 = init_cache_level(amount_cpus, false);
+	for(int i = 0; i < amount_cpus; i++) {
 		struct CacheState* state = setup_cachestate(NULL, true, 256*1024, CACHE_LINE_SIZE, ASSOCIATIVITY, &find_line_to_evict_lru, &msi_coherency_protocol, &cache_miss_func);
 		add_caches_to_level(l2, state, NULL);
 	}
 	if(add_level(hierarchy, l2) != 0 ){
 		exit(1);
 	}
-	struct CacheLevel* l3 = init_cache_level(AMOUNT_SIMULATED_PROCESSORS, false);
+	struct CacheLevel* l3 = init_cache_level(amount_cpus, false);
 	struct CacheState* state = setup_cachestate(NULL, true, 8*1024*1024, CACHE_LINE_SIZE, ASSOCIATIVITY, &find_line_to_evict_lru, &msi_coherency_protocol, &cache_miss_func);
 	add_caches_to_level(l3, state, NULL);
 	if(add_level(hierarchy, l3) != 0 ){
@@ -147,14 +174,21 @@ struct CacheHierarchy* setup_cache() {
 	}
 	return hierarchy;
 }
+#endif
+
+struct CacheHierarchy* setup_empty_cache(int amount_cpus) {
+	return init_cache_hierarchy(amount_cpus);
+}
+
 
 
 int main(int argc, char **argv) {
 	struct EventIDMapping trace_mapping;
+	printf("Cache simulator started!\n");
 	#ifdef SIMULATE_CACHE
 	printf("Simulating cache!\n");
 	#else
-	printf("Not simulating cashe!\n");
+	printf("Not simulating cache!\n");
 	#endif
 	#ifdef SIMULATE_MEMORY
 	printf("Simulating memory!\n");
@@ -167,8 +201,8 @@ int main(int argc, char **argv) {
 	printf("Not simulating address translation!\n");
 	#endif
 
-	if(argc < 6) {
-		printf("Atleast 5 arguments must be provided, first the mapping path, second the trace file, third output file, fourth cr3 output file\n");
+	if(argc < 7) {
+		printf("Atleast 6 arguments must be provided, first the mapping path, second the trace file, third output file, fourth cr3 output file\n");
 		return 1;
 	}
 	char* trace_id_mapping = argv[1];
@@ -177,19 +211,22 @@ int main(int argc, char **argv) {
 	printf("Input file: %s\n", input_file);
 	char* output_file = argv[3];
 	printf("Output file: %s\n", output_file);
+	int amount_simulated_processors = atoi(argv[4]);
+	printf("Simulating %d processors!\n", amount_simulated_processors);
+
 	#ifdef SIMULATE_MEMORY
 	char* memory_backing_file_location = NULL;
 	char* memory_ranges_file_location = NULL;
-	if(argc >= 5) {
-		memory_backing_file_location = argv[4];
-		memory_ranges_file_location = argv[5];
+	if(argc >= 6) {
+		memory_backing_file_location = argv[5];
+		memory_ranges_file_location = argv[6];
 	}
 	printf("Memdump file: %s\n", memory_backing_file_location);
 	printf("Memranges file: %s\n", memory_ranges_file_location);
 	#endif
 	char* initial_cr_values_file = NULL;
-	if(argc >= 6) {
-		initial_cr_values_file = argv[6];
+	if(argc >= 7) {
+		initial_cr_values_file = argv[7];
 	}
 	printf("Initial cr values file: %s\n", initial_cr_values_file);
 
@@ -225,10 +262,9 @@ int main(int argc, char **argv) {
 	uint64_t amount_writes = 0;
 	uint64_t amount_accesses = 0;
 	uint64_t amount_miss = 0;
-	uint64_t amount_user_accesses = 0;
 	uint64_t physical_access = 0;
 	uint64_t amount_tlb_flush = 0;
-	ControlRegisterValues control_register_values = init_control_register_values(AMOUNT_SIMULATED_PROCESSORS); //TODO configure
+	ControlRegisterValues control_register_values = init_control_register_values(amount_simulated_processors);
 	cache_access* tmp_access = malloc(sizeof(cache_access));
 	cr_change* tmp_cr_change = malloc(sizeof(cr_change));
 	tb_start_exec* tmp_tb_start_exec = malloc(sizeof(tb_start_exec));
@@ -239,12 +275,17 @@ int main(int argc, char **argv) {
 	bool paging_is_enabled = false;
 	int amount_unable_to_translate = 0;
 	uint64_t amount_events = 0;
+	#ifdef SHOW_MAPS
+	time_t start_time = time(NULL);
+	#endif
 	#ifdef SIMULATE_MEMORY
-	struct CacheHierarchy* cache = setup_cache();
+	struct CacheHierarchy* cache = setup_cache(amount_simulated_processors);
 	bool is_user_page_access;
 	uint amount_simulated_memories = 0;
 	struct Memory* memories = NULL;
 	printf("Setting up memory!\n");
+
+
 	if(memory_ranges_file_location != NULL) {
 		printf("Opening memory ranges file:%s\n", memory_ranges_file_location);
 		FILE* memory_ranges_file = fopen(memory_ranges_file_location, "r");
@@ -257,7 +298,8 @@ int main(int argc, char **argv) {
 		memories = malloc(10*sizeof(struct Memory));
 		debug_print("Allocated memory structs!\n");
 		debug_print("Reading memory ranges!\n");
-		struct MemoryRange* next = read_memory_ranges(memory_ranges_file);
+		uint64_t amount_memranges;
+		struct MemoryRange* next = read_memory_ranges(memory_ranges_file, &amount_memranges);
 		debug_printf("Read memory ranges:%p\n", next);
 		int i = 0;
 		while(next != NULL) {
@@ -288,15 +330,27 @@ int main(int argc, char **argv) {
 	}
 	#endif
 
+	#ifdef OUTPUT_TRANSLATION
+	translated_out = fopen(translated_trace, "wb");
+	if(translated_out == NULL ){
+		printf("Unable to open intermediate trace file!\n");
+	}
+	printf("Using intermediate trace file: %s\n", translated_trace);
+	#endif
+
+
+
 	if(initial_cr_values_file != NULL) {
-		if(read_cr_values_from_dump(initial_cr_values_file, control_register_values)) {
+		if(read_cr_values_from_dump(initial_cr_values_file, control_register_values, amount_simulated_processors)) {
 			printf("Unable to read initial cr register values!\n");
 			return 1;
 		}
 		printf("Succesfully read initial cr values!\n");
 	}
 
-
+  uint64_t user_access = 0;
+  uint64_t kernel_access = 0;
+  uint64_t amount_fetches = 0;
 
 	while(true) {
 		if(get_next_event_id(in, &delta_t, &negative_delta_t, &next_event_id) == -1) {
@@ -309,6 +363,7 @@ int main(int argc, char **argv) {
 			current_timestamp -= delta_t;
 		}
 		amount_events++;
+
 		if(next_event_id == trace_mapping.guest_mem_load_before_exec || next_event_id == trace_mapping.guest_mem_store_before_exec ) {
 			if(get_memory_access(in, tmp_access, next_event_id == trace_mapping.guest_mem_store_before_exec)) {
 				printf("Can not read cache access\n");
@@ -326,6 +381,17 @@ int main(int argc, char **argv) {
 			if(perform_mem_access(amount_simulated_memories, memories, tmp_access->cpu, &tmp_access->address, cache, control_register_values, current_timestamp, tmp_access->type, &is_user_page_access)){
 				break;
 			}
+			if(is_user_page_access){
+				user_access++;
+			}else{
+				kernel_access++;
+			}
+			#ifdef INTERMEDIATE_TRACE
+			fwrite(&tmp_access->tick, 8, 1, intermediate_trace_file);
+			fwrite(&tmp_access->address, 8, 1, intermediate_trace_file);
+			fwrite(&tmp_access->size, 1, 1, intermediate_trace_file);
+			fwrite(&tmp_access->type, 1, 1, intermediate_trace_file);
+			#endif
 
 			//Simulated memory can be seen as write through even if cache isn't (all write  access are directly written to memory)
 			if(tmp_access->type == CACHE_EVENT_WRITE && !is_user_page_access) {
@@ -378,9 +444,10 @@ int main(int argc, char **argv) {
 				break;
 			}
 			int i = 0;
-			// printf("TBSize:%lu lines\n", tmp_tb_start_exec->size / CACHE_LINE_SIZE);
-			while(tmp_tb_start_exec->size - (i*CACHE_LINE_SIZE) > CACHE_LINE_SIZE){
+		 //printf("TBSize:%u lines %u\n", tmp_tb_start_exec->size / CACHE_LINE_SIZE, tmp_tb_start_exec->size);
+			while(tmp_tb_start_exec->size - (i*CACHE_LINE_SIZE) > 0){
 				amount_accesses++;
+        amount_fetches++;
 				#ifdef SIMULATE_MEMORY
 				uint64_t addr = tmp_tb_start_exec->pc  + (i*CACHE_LINE_SIZE);
 				if(perform_mem_access(amount_simulated_memories, memories, tmp_tb_start_exec->cpu, &addr, cache, control_register_values, current_timestamp, CACHE_EVENT_INSTRUCTION_FETCH, &is_user_page_access)){
@@ -393,16 +460,24 @@ int main(int argc, char **argv) {
 			printf("Unknown eventid: %x\n", next_event_id);
 			break;
 		}
-
 		if(amount_events && (amount_events % 100000000 == 0)) {
+			#ifdef PRINT_MEMSIZE
 			uint64_t total_size = 0;
 			for(uint i = 0; i < amount_simulated_memories; i++) {
 				total_size += get_size(&memories[i]);
 			}
 			printf("%lu million events processed\tmemory size:%lu!\n", amount_events / 1000000, total_size / (1024*1024));
-			// printf("%lu million events processed!\n", amount_events / 1000000);
+			#else
+			printf("%lu million events processed!\n", amount_events / 1000000);
+			#endif
 
 		}
+		#ifdef SHOW_MAPS
+		if(amount_events && (amount_events % 1000000000 == 0)) {
+			printf("Time for previous billion: %lu\n", time(NULL) - start_time);
+			start_time = time(NULL);
+		}
+		#endif
 		if(amount_events > SIMULATION_LIMIT){
 			printf("Simulation limit reached! %lu\n", amount_events);
 			break;
@@ -412,13 +487,16 @@ int main(int argc, char **argv) {
 	printf("Amount of CR updates:\t%lu\n", cr_update_count);
 	printf("Reads:\t\t%lu\n", amount_reads);
 	printf("Writes:\t\t%lu\n", amount_writes);
+  printf("Fetch:\t\t%lu\n", amount_fetches);
 	printf("Amount accesses:\t\t\t%lu\n", amount_accesses);
 	printf("Amount access miss:\t\t\t%lu\n", amount_miss);
 	printf("Amount access hit:\t\t\t%lu\n", amount_accesses-amount_miss);
 	printf("Amount physical accesses:\t\t%lu\n", physical_access);
-	printf("Amount of user accesses:\t\t%lu\n", amount_user_accesses);
 	printf("Amount of tlb flush instructions\t%lu\n", amount_tlb_flush);
 	printf("Amount unable to translate\t\t%u\n", amount_unable_to_translate);
+	printf("Amount cache missess\t\t%u\n", amount_misses);
+  	printf("Amount kernel accesses\t\t%lu\n", kernel_access);
+  	printf("Amount user accesses\t\t%lu\n", user_access);
 	#ifdef SIMULATE_MEMORY
 	#endif
 	#ifdef INPUT_FILE
@@ -437,5 +515,8 @@ int main(int argc, char **argv) {
 	free(tmp_access);
 	free(tmp_cr_change);
 }
+
+
+
 
 

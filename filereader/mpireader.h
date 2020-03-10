@@ -1,5 +1,5 @@
 
-#ifdef OMPI_MPICC
+#ifdef USING_MPI
 #ifndef _BUFFERREADER_H
 #define _BUFFERREADER_H
 #include <stdint.h>
@@ -33,4 +33,4 @@ int mpi_buffer_get_next_event_id(struct mpi_buffer* buf, uint64_t* delta_t, bool
 
 #endif //_BUFFERREADER_H
 
-#endif /*OMPI_MPICC*/
+#endif /*USING_MPI*/

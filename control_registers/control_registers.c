@@ -22,21 +22,8 @@ bool paging_enabled(ControlRegisterValues values, uint8_t cpu) {
 }
 
 
-// int map_cpu_id(int cpu_id) {
-//     for(int i = 0; i < AMOUNT_SIMULATED_PROCESSORS; i++) {
-//         if(cpu_id_map[i] == cpu_id){
-//             return i;
-//         } else if(cpu_id_map[i] == INT_MAX) {
-//             cpu_id_map[i] = cpu_id;
-//             return i;
-//         }
-//     }
-//     printf("Unable to map cpu:%lx\n", cpu_id);
-//     exit(0);
-// }
-
-int read_cr_values_from_dump(char* cr_values_path, ControlRegisterValues control_register_values) {
-	debug_printf("Opening CR Values file at:%s\n", cr_values_path);
+int read_cr_values_from_dump(char* cr_values_path, ControlRegisterValues control_register_values, int amount_cpus) {
+	printf("Opening CR Values file at:%s\n", cr_values_path);
 	FILE* f = fopen(cr_values_path, "rb");
 	if(f == NULL){
 		printf("Unable to open control register initial values file!\n");
@@ -44,11 +31,12 @@ int read_cr_values_from_dump(char* cr_values_path, ControlRegisterValues control
 	}
 	uint64_t processor = 0;
 	uint64_t value;
-	for(int i = 0; i < AMOUNT_SIMULATED_PROCESSORS; i++){
+	for(int i = 0; i < amount_cpus; i++){
    		fscanf(f, "%lu\n", &processor);
     	for(int j = 0; j<5; j++) {
       		fscanf(f, "%lx\n", &value);
 			set_cr_value(control_register_values, processor, j, value);
+			debug_printf("CPU: %d Read CR[%d]:%lx\n", i, j, value);
 	    }
 		// debug_printf("Paging is: %s\n", paging_enabled(control_register_values, tmp_access->cpu) ? "enabled" : "disabled");
 		debug_printf("Initial CR values for processor:%lx\n", processor);

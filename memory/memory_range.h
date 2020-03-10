@@ -8,7 +8,7 @@ struct MemoryRange {
     struct MemoryRange* next;
 };
 
-struct MemoryRange* read_memory_ranges(FILE* memory_ranges_file);
+struct MemoryRange* read_memory_ranges(FILE* memory_ranges_file, uint64_t *amount);
 struct Memory* get_memory_for_address(int amount_memories, struct Memory* memories, uint64_t address);
 
 #endif

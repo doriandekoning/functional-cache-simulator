@@ -1,37 +1,13 @@
+#ifdef USING_MPI
 #include <mpi.h>
 #include <stdlib.h>
 #include <stdio.h>
 
 #include <mappingreader/mappingreader.h>
 
-// #include "mpi_datatype.h"
-// #include "cache/state.h"
-// #include "pipereader.h"
+#include "memory/memory_range.h"
+#include "simulator/distributed/output.h"
 
-
-// int get_mpi_access_datatype(MPI_Datatype* mpi_access_type){
-// 	//Setup mpi type for struct access
-// 	int err;
-// 	const int nitems = 6;
-// 	int blocklengths[6] = {1,1,1,1,1,1};
-// 	MPI_Datatype types[6] = {MPI_UINT64_T, MPI_UINT64_T, MPI_UINT64_T, MPI_UINT8_T, MPI_UINT64_T, MPI_UINT8_T};
-// 	MPI_Aint offsets[6];
-// 	offsets[0] = offsetof(cache_access, address);
-// 	offsets[1] = offsetof(cache_access, tick);
-// 	offsets[2] = offsetof(cache_access, cpu);
-// 	offsets[3] = offsetof(cache_access, type);
-// 	offsets[4] = offsetof(cache_access, data);
-// 	offsets[5] = offsetof(cache_access, size);
-// 	err = MPI_Type_create_struct(nitems, blocklengths, offsets, types, mpi_access_type);
-// 	if(err != 0) {
-// 		return err;
-// 	}
-// 	err = MPI_Type_commit(mpi_access_type);
-// 	if(err != 0 ){
-// 		return err;
-// 	}
-// 	return 0;
-// }
 
 
 int get_mpi_eventid_mapping_datatype(MPI_Datatype* mpi_mapping_datatype) {
@@ -51,3 +27,26 @@ int get_mpi_eventid_mapping_datatype(MPI_Datatype* mpi_mapping_datatype) {
     }
     return MPI_Type_commit(mpi_mapping_datatype);
 }
+
+int get_mpi_memoryrange_datatype(MPI_Datatype* mpi_memoryrange_datatype) {
+    int blocklenghts[2] = {8, 8};
+    MPI_Datatype types[2] = {MPI_UINT64_T, MPI_UINT64_T};
+    MPI_Aint offsets[2] = {offsetof(struct MemoryRange, start_addr), offsetof(struct MemoryRange, start_addr)};
+    if(MPI_Type_create_struct(2, blocklenghts, offsets, types, mpi_memoryrange_datatype)) {
+        return 1;
+    }
+    return MPI_Type_commit(mpi_memoryrange_datatype);
+}
+
+
+int get_mpi_cache_miss_datatype(MPI_Datatype* mpi_cache_miss_datatype) {
+    int blocklengths[3] = {1, 1, 1};
+    MPI_Datatype types[3] = {MPI_UINT64_T, MPI_UINT64_T, MPI_UINT8_T};
+    MPI_Aint offsets[3] = {offsetof(struct CacheMiss, addr), offsetof(struct CacheMiss, timestamp), offsetof(struct CacheMiss, cpu)};
+    if(MPI_Type_create_struct(3, blocklengths, offsets, types, mpi_cache_miss_datatype)){
+        return 1;
+    }
+    return MPI_Type_commit(mpi_cache_miss_datatype);
+}
+
+#endif /*MPI*/

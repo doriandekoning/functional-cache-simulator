@@ -19,6 +19,8 @@ int read_mapping(char* input_file_location, struct EventIDMapping* mapping) {
       return 0;
     }
     event_id &= (0x3F);
+
+
     if(len >= 256) {
       printf("Buffer size too small!\n");
       return 2;
@@ -26,6 +28,7 @@ int read_mapping(char* input_file_location, struct EventIDMapping* mapping) {
     if(fread(&event_name, len, 1, mapping_fp) != 1) {
       return 3;
     }
+
     event_name[len] = '\0';
     if(!strcmp(event_name, "guest_mem_load_before_exec")) {
       mapping->guest_mem_load_before_exec = event_id;

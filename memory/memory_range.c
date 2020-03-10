@@ -8,14 +8,14 @@
 
 
 
-struct MemoryRange* read_memory_ranges(FILE* memory_ranges_file) {
-    debug_print("Reading memory ranges!\n");
-	uint64_t amount;
-	fscanf(memory_ranges_file, "%lx\n", &amount);
+struct MemoryRange* read_memory_ranges(FILE* memory_ranges_file, uint64_t* amount) {
+    printf("Reading memory ranges from file!\n");
+	fscanf(memory_ranges_file, "%lx\n", amount);
+    printf("Amount of memory ranges:%lu\n", *amount);
     struct MemoryRange* cur = NULL;
-    debug_printf("%d memory ranges found!\n", amount);
-	for(uint64_t i = 0; i < amount; i++) {
-        debug_printf("Reading memory range:%d\n", i);
+    debug_printf("%d memory ranges found!\n", *amount);
+	for(uint64_t i = 0; i < *amount; i++) {
+        printf("Reading memory range:%ld\n", i);
         struct MemoryRange* new = malloc(sizeof(struct MemoryRange));
         debug_printf("Allocated memory for memory range:%p\n", new);
         new->next = cur;

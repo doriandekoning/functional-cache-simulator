@@ -45,7 +45,7 @@ struct Memory* init_last_level_memory(struct Memory* parent, uint64_t address) {
 			exit(1);
 		}
 	}else{
-		printf("memory out of range!%lx <= %lx <= %lx\n", mem->addr_start, address, mem->addr_end);
+		printf("memory out of range: %lx <= %lx <= %lx or backing file not found\n", mem->addr_start, address, mem->addr_end);
 		exit(1);
 	}
 	return mem;
@@ -126,7 +126,7 @@ int write_sim_memory(int amount_memories, struct Memory* memories, uint64_t addr
 	debug_print("Writing sim memory!\n");
 	struct Memory* mem = get_memory_for_address(amount_memories, memories, address);
 	if(mem == NULL) {
-		debug_printf("Address not in memory!\n");
+		debug_print("Address not in memory!\n");
 		return 0;
 	}
 	if((address & 0xFFF) + size > (1<<12)){
@@ -350,7 +350,6 @@ struct Memory* init_memory(FILE* backing_file, uint64_t addr_start, uint64_t add
 }
 
 int write_sim_memory(int amount_memories, struct Memory* memories, uint64_t address, size_t size, void* value) {
-	debug_print("Writing memory!\n");
 	struct Memory* mem = get_memory_for_address(amount_memories, memories, address);
 	if(mem == NULL) {
 		debug_print("Address not in memory!\n");
@@ -381,7 +380,7 @@ int write_sim_memory(int amount_memories, struct Memory* memories, uint64_t addr
 __attribute__((always_inline)) inline int read_sim_memory(int amount_memories, struct Memory* memories, uint64_t address, size_t size, void* value) {
 	debug_print("Reading memory!\n");
 	struct Memory* mem = get_memory_for_address(amount_memories, memories, address);
-	debug_print("Found memory to read!\n");
+	debug_printf("Found memory to read%p!\n", mem);
 	void* memory_loc = ((uint8_t*)mem->table) + address - mem->addr_start;
 	#ifdef USE_MEMCPY
 	memcpy(value, memory_loc, size);
