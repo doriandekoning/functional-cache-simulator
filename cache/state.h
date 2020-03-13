@@ -21,9 +21,10 @@
 #define CACHE_READ  (uint8_t)2
 #define CR_UPDATE (uint8_t)3*/
 
-
-#define CALCULATE_SET_INDEX(state, address) (((address/state->line_size) * state->associativity) % state->size)
-#define CALCULATE_TAG(state, address) (((address/state->line_size)  * state->associativity) / state->size)
+//#define CALCULATE_SET_INDEX(state, address) (((address/state->line_size) * state->associativity) % state->size)
+//#define CALCULATE_TAG(state, address) (((address/state->line_size)  * state->associativity) / state->size)
+#define CALCULATE_SET_INDEX(state, address) ((address/state->line_size) % (state->size/state->associativity))
+#define CALCULATE_TAG(state, address) ((address/state->line_size)  / (state->size/state->associativity))
 
 struct CacheLine {
 	uint64_t tag;
@@ -77,5 +78,6 @@ void access_cache(struct CacheState* state, uint64_t address, uint64_t timestamp
 
 int get_line_location_in_cache(struct CacheState* state, uint64_t address);
 
+void insert_in_level(struct CacheState* state, bool writeback, uint64_t addr, uint64_t timestamp, bool write);
 
 #endif /* STATE_H */

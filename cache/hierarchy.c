@@ -99,7 +99,6 @@ printf("AAA!%d\n", level->has_instruction_caches);
             // If new level only has a single cache all caches in the last_level have this cache as higher level cache
             add_lower_level_cache(level->caches[level->amount_caches == 1 ? 0 : i], last_level->caches[i]);
             if(level->has_instruction_caches) {
-                printf("MOTHERFUCKER!\n");
                 add_lower_level_cache(level->instruction_caches[level->amount_caches == 1 ? 0 : i], last_level->instruction_caches[i]);
             }else if(last_level->has_instruction_caches) {
                 add_lower_level_cache(level->caches[level->amount_caches == 1 ? 0 : i], last_level->instruction_caches[i]);
