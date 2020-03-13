@@ -41,7 +41,6 @@ int send_memory_ranges_to_coordinator(char* memory_ranges_file_path, int coordin
 	for(int i = 0; i < amount_memrange; i++) {
 		memory_ranges_array[i].start_addr = cur->start_addr;
 		memory_ranges_array[i].end_addr = cur->end_addr;
-		printf("AAAAAAAAAAAAAAA[%lx-%lx]\n", cur->start_addr, cur->end_addr);
 		cur = cur->next;
 	}
 

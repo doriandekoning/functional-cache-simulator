@@ -67,8 +67,13 @@ struct CacheHierarchy* setup_cache(int amount_cpus) {
 int run_worker(int world_size, int world_rank, int amount_cpus) {
 	debug_print("[WORKER]Worker started\n");
     cache_access* buffer;
+    int amount_sim_caches = 16;
     #ifdef SIMULATE_CACHE
-    struct CacheHierarchy* cache = setup_cache(amount_cpus);
+    //struct CacheHierarchy* cache = setup_cache(amount_cpus);
+    struct CacheHierarchy** cache = malloc(sizeof(struct CacheHierarchy*) * amount_sim_caches); 
+    for(int i = 0; i < amount_sim_caches; i++ ){
+	cache[i] = setup_cache(amount_cpus);
+    }
     #endif
 	debug_print("Worker has setup cache\n");
 
@@ -92,10 +97,12 @@ int run_worker(int world_size, int world_rank, int amount_cpus) {
         #ifdef SIMULATE_CACHE
         for(int i = 0; i < 1024;i++) {
 			// debug_printf("[WORKER]doing cache simulation, cpu:%u, add: %lx, tick: %lx, type:%d\n", buffer[i].cpu, buffer[i].address, buffer[i].tick, buffer[i].type);
-            if(access_cache_in_hierarchy(cache, buffer[i].cpu, buffer[i].address, buffer[i].tick, buffer[i].type)) {
+	for(int j = 0; j < amount_sim_caches; j++){
+            if(access_cache_in_hierarchy(cache[j], buffer[i].cpu, buffer[i].address, buffer[i].tick, buffer[i].type)) {
                 printf("Unable to access cache!\n");
                 return 1;
             }
+	}
 			// debug_print("[WORKER]finished cache simulation\n");
         }
         #endif

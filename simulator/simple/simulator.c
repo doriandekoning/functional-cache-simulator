@@ -80,7 +80,7 @@ void cache_miss_func(bool write, uint64_t timestamp, uint64_t address) {
 	fwrite(&outstruct, 1, sizeof(struct OutputStruct), out);
 }
 
-int perform_mem_access(int amount_memories, struct Memory* memories, uint8_t cpu, uint64_t* address, struct CacheHierarchy* hierarchy, ControlRegisterValues control_register_values, uint64_t timestamp, int type, bool* is_user_page) {
+int perform_mem_access(int amount_memories, struct Memory* memories, uint8_t cpu, uint64_t* address, struct CacheHierarchy** hierarchies, ControlRegisterValues control_register_values, uint64_t timestamp, int type, bool* is_user_page) {
 
 	#ifdef SIMULATE_ADDRESS_TRANSLATION
 	uint64_t physical_address = 0;
@@ -109,7 +109,9 @@ int perform_mem_access(int amount_memories, struct Memory* memories, uint8_t cpu
 	#ifdef SIMULATE_CACHE
 	if(!cache_disable){
 		// Check if address is in range
-		return access_cache_in_hierarchy(hierarchy, cpu, *address, timestamp, type);
+		for(int i = 0; i < AMOUNT_SIM_CACHES; i++) {
+		access_cache_in_hierarchy(hierarchies[i], cpu, *address, timestamp, type);
+}
 	}
 	return 0;
 	#else
@@ -137,14 +139,42 @@ int perform_mem_access(int amount_memories, struct Memory* memories, uint8_t cpu
 
 #ifdef SIMPLE_CACHE
 struct CacheHierarchy* setup_cache(int amount_cpus) {
-	struct CacheHierarchy* hierarchy = init_cache_hierarchy(amount_cpus);
+printf("Setting up simple cache!\n");
+  struct CacheHierarchy* hierarchy = init_cache_hierarchy(amount_cpus);
+        struct CacheLevel* l1 = init_cache_level(amount_cpus, true);
+        for(int i = 0; i < amount_cpus; i++) {
+                struct CacheState* dcache = setup_cachestate(NULL, true, 8*1024, CACHE_LINE_SIZE, ASSOCIATIVITY, &find_line_to_evict_lru, &msi_coherency_protocol, &cache_miss_func);
+                struct CacheState* icache = setup_cachestate(NULL, true, 8*1024, CACHE_LINE_SIZE, ASSOCIATIVITY, &find_line_to_evict_lru, &msi_coherency_protocol, &cache_miss_func);
+                add_caches_to_level(l1, dcache, icache);
+        }
+
+        if(add_level(hierarchy, l1) != 0 ){
+                exit(1);
+        }
+
+        struct CacheLevel* l2 = init_cache_level(amount_cpus, false);
+        for(int i = 0; i < amount_cpus; i++) {
+                struct CacheState* state = setup_cachestate(NULL, true, 256*1024, CACHE_LINE_SIZE, ASSOCIATIVITY, &find_line_to_evict_lru, &msi_coherency_protocol, &cache_miss_func);
+                add_caches_to_level(l2, state, NULL);
+        }
+        if(add_level(hierarchy, l2) != 0 ){
+                exit(1);
+        }
+        struct CacheLevel* l3 = init_cache_level(amount_cpus, false);
+        struct CacheState* state = setup_cachestate(NULL, true, 8*1024*1024, CACHE_LINE_SIZE, ASSOCIATIVITY, &find_line_to_evict_lru, &msi_coherency_protocol, &cache_miss_func);
+        add_caches_to_level(l3, state, NULL);
+        if(add_level(hierarchy, l3) != 0 ){
+                exit(1);
+        }
+        return hierarchy;
+/*	struct CacheHierarchy* hierarchy = init_cache_hierarchy(amount_cpus);
 	struct CacheLevel* l1 = init_cache_level(1, false);
 	struct CacheState* l1_cache = setup_cachestate(NULL, false, 4*1024*1024, 8, 4, &find_line_to_evict_lru, NULL, &cache_miss_func);
 	add_caches_to_level(l1, l1_cache, NULL);
 	if(add_level(hierarchy, l1) != 0) {
 		exit(1);
 	}
-	return hierarchy;
+	return hierarchy;*/
 }
 #else
 struct CacheHierarchy* setup_cache(int amount_cpus) {
@@ -183,6 +213,7 @@ struct CacheHierarchy* setup_empty_cache(int amount_cpus) {
 
 
 int main(int argc, char **argv) {
+        time_t start_t = time(NULL);
 	struct EventIDMapping trace_mapping;
 	printf("Cache simulator started!\n");
 	#ifdef SIMULATE_CACHE
@@ -279,7 +310,12 @@ int main(int argc, char **argv) {
 	time_t start_time = time(NULL);
 	#endif
 	#ifdef SIMULATE_MEMORY
-	struct CacheHierarchy* cache = setup_cache(amount_simulated_processors);
+	
+//	struct CacheHierarchy* cache = setup_cache(amount_simulated_processors);
+	struct CacheHierarchy** caches = malloc(sizeof(struct CacheHierarchy*) * AMOUNT_SIM_CACHES);
+        for(int i = 0; i < AMOUNT_SIM_CACHES; i++) {
+		caches[i] = setup_cache(amount_simulated_processors);
+        }
 	bool is_user_page_access;
 	uint amount_simulated_memories = 0;
 	struct Memory* memories = NULL;
@@ -378,7 +414,7 @@ int main(int argc, char **argv) {
 			amount_accesses++;
 			#ifdef SIMULATE_MEMORY
 			is_user_page_access = false;
-			if(perform_mem_access(amount_simulated_memories, memories, tmp_access->cpu, &tmp_access->address, cache, control_register_values, current_timestamp, tmp_access->type, &is_user_page_access)){
+			if(perform_mem_access(amount_simulated_memories, memories, tmp_access->cpu, &tmp_access->address, caches, control_register_values, current_timestamp, tmp_access->type, &is_user_page_access)){
 				break;
 			}
 			if(is_user_page_access){
@@ -450,7 +486,7 @@ int main(int argc, char **argv) {
         amount_fetches++;
 				#ifdef SIMULATE_MEMORY
 				uint64_t addr = tmp_tb_start_exec->pc  + (i*CACHE_LINE_SIZE);
-				if(perform_mem_access(amount_simulated_memories, memories, tmp_tb_start_exec->cpu, &addr, cache, control_register_values, current_timestamp, CACHE_EVENT_INSTRUCTION_FETCH, &is_user_page_access)){
+				if(perform_mem_access(amount_simulated_memories, memories, tmp_tb_start_exec->cpu, &addr, caches, control_register_values, current_timestamp, CACHE_EVENT_INSTRUCTION_FETCH, &is_user_page_access)){
 					break;
 				}
 				#endif
@@ -504,7 +540,7 @@ int main(int argc, char **argv) {
 	printf("In total %u bytes where read from the input file\n", bytes_read);
 	printf("This is approximately %u Mb\n", bytes_read / (1024*1024));
 	#endif
-
+	printf("Seconds spend: %ld\n", time(NULL) - start_t);
 	#ifdef SIMULATE_MEMORY
 	uint64_t total_size = 0;
 	for(uint i = 0; i < amount_simulated_memories; i++) {

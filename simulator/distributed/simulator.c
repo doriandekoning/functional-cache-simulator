@@ -56,14 +56,18 @@ int main(int argc, char** argv) {
 	}
 
 	if(world_rank == (world_size - 2)){
+		time_t start = time(NULL);
 		if(run_coordinator(world_size, amount_cpus, memdump_path)) {
 			return 1;
 		}
+		printf("Time in seconds:%lu\n", time(NULL) - start);
+		return 1;
 	} else if(world_rank == (world_size -1)) {
+		time_t start = time(NULL);
 		debug_printf("[INPUT_READER]Starting input reader with rank: %d\n", world_size -1);
-		if( run_input_reader(input_path, mapping_path, memrange_path, cr_input_path, world_size, amount_cpus)){
-			return 1;
-		}
+		run_input_reader(input_path, mapping_path, memrange_path, cr_input_path, world_size, amount_cpus);
+		printf("Time in seconds:%lu\n", time(NULL) - start);
+		return 1;
 	}else if( world_rank == (world_size - 3) ) {
 		debug_printf("[OUPUT]Starting output writer with rank: %d\n", world_size -3);
 		if( run_output(world_size, world_size - 3, world_size - 3, output_path)){

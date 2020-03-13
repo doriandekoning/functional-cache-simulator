@@ -1,0 +1,19 @@
+#!/bin/bash
+#SBATCH --time=00:15:00
+#SBATCH -N 1 
+#SBATCH --ntasks-per-node=1
+
+. /etc/bashrc
+. /etc/profile.d/modules.sh
+module load openmpi/gcc/64
+
+TRACE="blackscholes_4c_medium"
+SIMCPUS=4
+
+APP=./bin/distributed_simulator
+#ARGS="/var/scratch/tdkoning/trace/mapping /var/scratch/tdkoning/trace/$TRACE/crvalues /var/scratch/tdkoning/trace/$TRACE/trace /var/scratch/tdkoning/trace/$TRACE/memrange $SIMCPUS /var/scratch/tdkoning/trace/$TRACE/cachesimout /var/scratch/tdkoning/trace/$TRACE/memdump"
+
+#OMPI_OPTS="--mca btl tcp,self --mca btl_tcp_if_include ib0"
+#OMPI_OPTS="--mca btl tcp,self --mca btl_tcp_if_include eth0"
+#$MPI_RUN $OMPI_OPTS $APP $ARGS
+$MPI_RUN ./bin/simple-functional-cache-sim /var/scratch/tdkoning/trace/mapping /var/scratch/tdkoning/trace/$TRACE/trace /var/scratch/tdkoning/trace/$TRACE/out $SIMCPUS /var/scratch/tdkoning/trace/$TRACE/memdump /var/scratch/tdkoning/trace/$TRACE/memrange /var/scratch/tdkoning/trace/$TRACE/crvalues

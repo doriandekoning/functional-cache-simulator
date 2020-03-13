@@ -59,50 +59,53 @@ struct MemoryRange* receive_memory_ranges_from_inputreader(int input_reader_rank
 
 int process_cache_access(struct WorkerBuffer* buffers, cache_access* access, int world_size) {
 
-
+int workers_per_cache = 8;
     //Determine which worker to send access to
-    //TODO support sending to multiple workers
-    int worker_idx = (access->address / CACHE_LINE_SIZE) % (world_size-3);
+    int worker_idx = (access->address / CACHE_LINE_SIZE) % workers_per_cache;
+	
     struct WorkerBuffer* wb = &buffers[worker_idx];
     if(wb->cur_buffer_idx == 0 ){
         wb->accesses_buf_0[wb->cur_write_idx] = *access;
     }else{
         wb->accesses_buf_1[wb->cur_write_idx] = *access;
-        }
+    }
     wb->cur_write_idx++;
     if(wb->cur_write_idx == wb->size) {
-        debug_printf("[COORDINATOR]sending buffer: %d\n", wb->cur_buffer_idx);
-        if(wb->cur_open_request != NULL) {
+	for(int i = 0; i < 1; i++){
+      //for(int i = 0; i < (world_size-8); i+=8) {
+          debug_printf("[COORDINATOR]sending buffer: %d to %d\n", wb->cur_buffer_idx, worker_idx+i);
+          if(wb->cur_open_request != NULL) {
             if(MPI_Wait(&wb->cur_open_request, MPI_STATUS_IGNORE)) {
-                printf("Unable to wait!\n");
-                return 1;
+              printf("Unable to wait!\n");
+              return 1;
             }
+          }
         }
-        if(wb->cur_buffer_idx == 0) {
-
-            if(MPI_Isend(wb->accesses_buf_0, wb->size*sizeof(cache_access), MPI_CHAR, worker_idx, 2, MPI_COMM_WORLD, &wb->cur_open_request)) {
+        for(int i = 0; i < (world_size-8); i+=8 ){
+               if(wb->cur_buffer_idx == 0) {
+	    debug_printf("Worker buffer pointer:%p\n", wb->cur_open_request);
+	    if(MPI_Isend(wb->accesses_buf_0, wb->size*sizeof(cache_access), MPI_CHAR, worker_idx+i, 2, MPI_COMM_WORLD, &wb->cur_open_request)) {
                 printf("Unable to send!\n");
                 return 1;
             }
             wb->cur_buffer_idx = 1;
-        }else{
-            if(MPI_Isend(wb->accesses_buf_1, wb->size*sizeof(cache_access), MPI_CHAR, worker_idx, 2, MPI_COMM_WORLD, &wb->cur_open_request)) {
+          }else{
+            if(MPI_Isend(wb->accesses_buf_1, wb->size*sizeof(cache_access), MPI_CHAR, worker_idx+i, 2, MPI_COMM_WORLD, &wb->cur_open_request)) {
                 printf("Unable to send!\n");
                 return 1;
             }
             wb->cur_buffer_idx = 0;
-        }
-        wb->cur_write_idx = 0;
-        debug_printf("[COORDINATOR]send buffer: %d\n",  wb->cur_buffer_idx);
+           }
+	   wb->cur_write_idx = 0;
+           debug_printf("[COORDINATOR]send buffer: %d\n",  wb->cur_buffer_idx);
+    	 }
     }
+
     return 0;
 }
 
 
 int run_coordinator(int mpi_world_size, int amount_cpus, char* memory_range_base_path) {
-    uint64_t mem_range_start = 0;
-	// uint64_t mem_range_end = 0x23fffffffULL; 8g
-	uint64_t mem_range_end = 1024*1024*1024; //1g
     struct mpi_buffer* mpi_buffer;
     uint8_t next_event_id;
     uint64_t current_timestamp;
@@ -199,7 +202,8 @@ int run_coordinator(int mpi_world_size, int amount_cpus, char* memory_range_base
     }
 
     worker_buffers = malloc(sizeof(struct WorkerBuffer) * (mpi_world_size-3));
-    for(int i = 0; i < (mpi_world_size - 2); i++ ){
+    debug_printf("SETUP %d worker buffers\n", (mpi_world_size-3));
+    for(int i = 0; i < (mpi_world_size - 3); i++ ){
         worker_buffers[i].size = 1024;
         worker_buffers[i].cur_write_idx = 0;
         worker_buffers[i].accesses_buf_0 = malloc(sizeof(cache_access)*1024);
@@ -221,6 +225,9 @@ int run_coordinator(int mpi_world_size, int amount_cpus, char* memory_range_base
             printf("Unable to read next event id!\n");
             return 1;
         }
+	if(total_amount_events_proccessed == 200000000) {
+		return 0;
+ 	}	
         if(negative_delta_t) {
             current_timestamp -= delta_t;
         }else{

@@ -78,7 +78,6 @@ int add_caches_to_level(struct CacheLevel* level, struct CacheState* data_cache,
 
 
 int add_level(struct CacheHierarchy* hierarchy, struct CacheLevel* level) {
-printf("AAA!%d\n", level->has_instruction_caches);
 
     if(hierarchy->amount_levels == MAX_CACHE_LEVELS) {
         printf("Maximum amount of levels reached!\n");
